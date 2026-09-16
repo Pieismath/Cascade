@@ -2,7 +2,8 @@
 //  ScanMusicView.swift
 //  MyPianoInstructor
 //
-//  Created by Jason Fang on 11/17/25.
+//  The Add tab: scan sheet music, import a MusicXML file, or pick from the
+//  starter library. Every starter piece shows its own score art.
 //
 
 import SwiftUI
@@ -14,136 +15,43 @@ struct ScanMusicView: View {
     @Binding var selectedSong: Song?
     @Binding var tabSelection: Int
 
-    @State private var songTitle: String = ""
     @State private var isImporting = false
     @State private var statusText: String = ""
     @State private var showSheetScan = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 26) {
 
-                // MARK: - Header
-                HStack {
-                    Button {
-                        tabSelection = 0
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.title2)
-                    }
-
-                    Text("Add Music")
-                        .font(.title2).bold()
-
-                    Spacer()
-                }
-                .padding(.top)
-
-                // MARK: - Scan Sheet Music (camera / PDF → falling notes)
-                scanSheetMusicSection
-
-                // MARK: - Song Title
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Song title")
-                        .font(.subheadline).bold()
-                    TextField("Enter song title", text: $songTitle)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                // MARK: - File Import
-                fileImportSection
-
-                // Status
-                if !statusText.isEmpty {
-                    HStack {
-                        Image(systemName: statusText.contains("success") || statusText.contains("Success") ? "checkmark.circle.fill" : "info.circle")
-                            .foregroundColor(statusText.contains("success") || statusText.contains("Success") ? .green : .secondary)
-                        Text(statusText)
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                    }
-                }
-
-                // MARK: - Free Starter Library
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Free Starter Library")
-                            .font(.headline)
-                        Text("Ready to practice — bundled right in the app. No internet, no sheet music required.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    ForEach(groupedDemos, id: \.0) { level, demos in
-                        // Difficulty group header
-                        let headerColor: Color = level == "Beginner" ? .green : level == "Intermediate" ? .orange : .purple
-                        HStack(spacing: 6) {
-                            Text(level)
-                                .font(.caption).bold()
-                                .foregroundColor(headerColor)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(headerColor.opacity(0.12))
-                                .cornerRadius(8)
-                            Rectangle()
-                                .fill(Color.secondary.opacity(0.2))
-                                .frame(height: 1)
-                        }
-
-                        ForEach(demos, id: \.title) { demo in
-                            let accent: Color = demo.difficulty == "Beginner" ? .green : demo.difficulty == "Intermediate" ? .orange : .purple
-                            Button {
-                                importDemoSong(title: demo.title, resourceName: demo.resourceName)
-                            } label: {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(accent.opacity(0.15))
-                                            .frame(width: 36, height: 36)
-                                        Image(systemName: "music.note")
-                                            .foregroundColor(accent)
-                                            .font(.callout)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(demo.title)
-                                            .font(.subheadline).bold()
-                                            .foregroundColor(.primary)
-                                        HStack(spacing: 4) {
-                                            Text(demo.composer)
-                                                .font(.caption).bold()
-                                                .foregroundColor(accent)
-                                            Text("·")
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                            Text(demo.description)
-                                                .font(.caption)
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
-                                    Spacer()
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(accent)
-                                        .font(.title3)
-                                }
-                                .padding(12)
-                                .background(AppTheme.cardBackground)
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(accent.opacity(0.2), lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Bring a piece in").eyebrowStyle()
+                    Text("Add music")
+                        .font(CascadeFont.display(36))
+                        .foregroundStyle(Brand.textPrimary)
                 }
                 .padding(.top, 8)
 
-                Spacer(minLength: 40)
+                scanHero
+
+                importRow
+
+                if !statusText.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: statusText.localizedCaseInsensitiveContains("success") ? "checkmark.circle.fill" : "info.circle")
+                            .foregroundStyle(statusText.localizedCaseInsensitiveContains("success") ? Brand.mint : Brand.textSecondary)
+                        Text(statusText)
+                            .font(.footnote)
+                            .foregroundStyle(Brand.textSecondary)
+                    }
+                }
+
+                starterLibrary
+
+                Spacer(minLength: 30)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 20)
         }
+        .stageBackground()
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [.xml, .musicXML, .compressedMusicXML],
@@ -157,87 +65,165 @@ struct ScanMusicView: View {
         }
     }
 
-    // MARK: - Scan Sheet Music Section
+    // MARK: - Scan hero
 
-    private var scanSheetMusicSection: some View {
+    private var scanHero: some View {
         Button {
             showSheetScan = true
         } label: {
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(.white.opacity(0.2))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "camera.viewfinder")
-                        .font(.title2)
-                        .foregroundColor(.white)
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text("Scan Sheet Music")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                        Text("NEW")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundColor(AppTheme.accent)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.white)
-                            .cornerRadius(5)
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(Brand.stage)
+                    .frame(height: 210)
+
+                // A few falling bars on the right, landing on a keyboard — the product in one glance.
+                VStack(spacing: 0) {
+                    Spacer()
+                    HStack(alignment: .bottom, spacing: 7) {
+                        Spacer()
+                        ForEach(0..<9, id: \.self) { i in
+                            let h: CGFloat = [22, 44, 16, 58, 30, 66, 26, 48, 34][i]
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(i == 3 ? Brand.violet : (i % 3 == 1 ? Brand.amber : Brand.teal))
+                                .frame(width: 10, height: h)
+                                .glow(i % 3 == 1 ? Brand.amber : Brand.teal, radius: 8, opacity: 0.45)
+                        }
                     }
-                    Text("Photograph pages or import a PDF — no MusicXML needed")
-                        .font(.caption)
-                        .foregroundColor(.white.opacity(0.85))
+                    .padding(.trailing, 26)
+                    .padding(.bottom, 2)
+                    KeyboardStripView(highlighted: [76, 79])
+                        .frame(height: 26)
+                        .padding(.horizontal, 2)
+                        .padding(.bottom, 2)
                 }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundColor(.white)
+                .frame(height: 210)
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Scan sheet music").eyebrowStyle(Brand.teal)
+                    }
+                    .foregroundStyle(Brand.teal)
+                    Text("Point your camera\nat a page.")
+                        .font(CascadeFont.display(26))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Falling notes and a video, in a minute.")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.75))
+                    Spacer()
+                }
+                .padding(22)
+                .frame(height: 210, alignment: .topLeading)
             }
-            .padding()
-            .background(AppTheme.heroGradient)
-            .cornerRadius(14)
+            .overlay(alignment: .bottomLeading) {
+                Chip(text: "Try a free sample", icon: "sparkles", tint: Brand.teal, filled: true)
+                    .padding(.leading, 20)
+                    .padding(.bottom, 40)
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Scan sheet music with camera or PDF")
     }
 
-    // MARK: - Grouped Demo Songs
+    // MARK: - Import
+
+    private var importRow: some View {
+        Button {
+            isImporting = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "doc.badge.plus")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Brand.amber)
+                    .frame(width: 44, height: 44)
+                    .background(Brand.amber.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Import a MusicXML file")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Brand.textPrimary)
+                    Text(".musicxml, .xml or .mxl from MuseScore, Finale, Sibelius…")
+                        .font(.caption)
+                        .foregroundStyle(Brand.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Brand.textTertiary)
+            }
+            .cascadeCard(padding: 12, radius: 20)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Starter library
+
+    private var starterLibrary: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader("Starter library", subtitle: "Free, offline, public domain")
+
+            ForEach(groupedDemos, id: \.0) { level, demos in
+                let tint: Color = level == "Beginner" ? Brand.mint : level == "Intermediate" ? Brand.amber : Brand.coral
+                HStack(spacing: 10) {
+                    Chip(text: level, tint: tint)
+                    Rectangle().fill(Brand.hairline).frame(height: 1)
+                }
+                .padding(.top, 4)
+
+                ForEach(demos, id: \.title) { demo in
+                    demoRow(demo, tint: tint)
+                }
+            }
+        }
+    }
+
+    private func demoRow(_ demo: DemoSongs.DemoSong, tint: Color) -> some View {
+        Button {
+            importDemoSong(title: demo.title, resourceName: demo.resourceName)
+        } label: {
+            HStack(spacing: 14) {
+                if let playback = DemoArtCache.playback(for: demo.resourceName) {
+                    ScoreArtView(playback: playback, window: 8, cornerRadius: 12)
+                        .frame(width: 60, height: 60)
+                } else {
+                    RoundedRectangle(cornerRadius: 12).fill(Brand.surfaceHigh).frame(width: 60, height: 60)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(demo.title)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Brand.textPrimary)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(demo.composer)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(tint)
+                        Text("·").foregroundStyle(Brand.textTertiary)
+                        Text(demo.description)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Brand.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 6)
+                Image(systemName: libraryVM.songs.contains { $0.title == demo.title } ? "checkmark" : "plus")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Brand.textPrimary)
+                    .frame(width: 34, height: 34)
+                    .background(Brand.surfaceHigh, in: Circle())
+            }
+            .cascadeCard(padding: 12, radius: 20)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(demo.title) by \(demo.composer)")
+    }
 
     private var groupedDemos: [(String, [DemoSongs.DemoSong])] {
         let groups = Dictionary(grouping: DemoSongs.all, by: \.difficulty)
         return ["Beginner", "Intermediate", "Advanced"].compactMap { level in
             guard let songs = groups[level] else { return nil }
             return (level, songs)
-        }
-    }
-
-    // MARK: - File Import Section
-
-    private var fileImportSection: some View {
-        VStack(spacing: 12) {
-            Button {
-                isImporting = true
-            } label: {
-                HStack {
-                    Image(systemName: "doc.badge.plus")
-                        .font(.title2)
-                    VStack(alignment: .leading) {
-                        Text("Select MusicXML File")
-                            .font(.headline)
-                        Text(".musicxml, .xml, or .mxl formats")
-                            .font(.caption)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                }
-                .foregroundColor(.white)
-                .padding()
-                .background(AppTheme.accentGradient)
-                .cornerRadius(14)
-            }
-            .disabled(songTitle.trimmingCharacters(in: .whitespaces).isEmpty)
-            .opacity(songTitle.trimmingCharacters(in: .whitespaces).isEmpty ? 0.6 : 1.0)
         }
     }
 
@@ -255,12 +241,7 @@ struct ScanMusicView: View {
             }
 
             let gotAccess = selectedURL.startAccessingSecurityScopedResource()
-
-            defer {
-                if gotAccess {
-                    selectedURL.stopAccessingSecurityScopedResource()
-                }
-            }
+            defer { if gotAccess { selectedURL.stopAccessingSecurityScopedResource() } }
 
             var error: NSError?
             NSFileCoordinator().coordinate(readingItemAt: selectedURL, error: &error) { url in
@@ -271,13 +252,13 @@ struct ScanMusicView: View {
                 do {
                     try? FileManager.default.removeItem(at: tempURL)
                     try FileManager.default.copyItem(at: url, to: tempURL)
-
                     let data = try Data(contentsOf: tempURL)
-                    // Handles plain XML in common encodings and .mxl ZIP containers
                     let xmlString = try MusicXMLImport.loadString(from: data)
 
                     DispatchQueue.main.async {
-                        let title = songTitle.isEmpty ? url.deletingPathExtension().lastPathComponent : songTitle
+                        let title = url.deletingPathExtension().lastPathComponent
+                            .replacingOccurrences(of: "_", with: " ")
+                            .replacingOccurrences(of: "-", with: " ")
                         let newSong = libraryVM.addSong(title: title, musicXML: xmlString)
                         selectedSong = newSong
                         statusText = "Imported successfully!"
@@ -290,7 +271,7 @@ struct ScanMusicView: View {
                 }
             }
 
-            if let error = error {
+            if let error {
                 statusText = "Coordinator error: \(error.localizedDescription)"
             }
         }
@@ -303,7 +284,6 @@ struct ScanMusicView: View {
             statusText = "Demo file not found in bundle."
             return
         }
-
         do {
             let data = try Data(contentsOf: url)
             let xmlString = String(decoding: data, as: UTF8.self)
@@ -323,6 +303,23 @@ struct ScanMusicView: View {
     }
 }
 
+// MARK: - Score art cache for bundled pieces
+
+/// Parses each bundled piece once so the library rows can show real art.
+@MainActor
+enum DemoArtCache {
+    private static var cache: [String: PlaybackData] = [:]
+
+    static func playback(for resourceName: String) -> PlaybackData? {
+        if let cached = cache[resourceName] { return cached }
+        guard let url = Bundle.main.url(forResource: resourceName, withExtension: "musicxml"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        let playback = MusicXMLParser.parse(data: data)
+        cache[resourceName] = playback
+        return playback
+    }
+}
+
 // MARK: - Demo Songs Data
 
 enum DemoSongs {
@@ -335,49 +332,24 @@ enum DemoSongs {
     }
 
     static let all: [DemoSong] = [
-        // MARK: Beginner
-        DemoSong(title: "C Major Scale",
-                 resourceName: "CMajorScale",
-                 description: "Foundation finger exercise",
-                 difficulty: "Beginner",
-                 composer: "Exercise"),
-        DemoSong(title: "Hot Cross Buns",
-                 resourceName: "HotCrossBuns",
-                 description: "Three-note starter piece",
-                 difficulty: "Beginner",
-                 composer: "Traditional"),
-        DemoSong(title: "Mary Had a Little Lamb",
-                 resourceName: "MaryHadALittleLamb",
-                 description: "Simple right-hand melody",
-                 difficulty: "Beginner",
-                 composer: "Traditional"),
-        DemoSong(title: "Twinkle Twinkle Little Star",
-                 resourceName: "TwinkleTwinkle",
-                 description: "Classic first song",
-                 difficulty: "Beginner",
-                 composer: "Traditional"),
-        // MARK: Intermediate
-        DemoSong(title: "Ode to Joy",
-                 resourceName: "OdeToJoy",
-                 description: "Beethoven's famous theme",
-                 difficulty: "Intermediate",
-                 composer: "Beethoven"),
-        DemoSong(title: "Für Elise",
-                 resourceName: "FurElise",
-                 description: "Iconic Beethoven melody",
-                 difficulty: "Intermediate",
-                 composer: "Beethoven"),
-        // MARK: Advanced
-        DemoSong(title: "Flight of the Bumblebee",
-                 resourceName: "FlightOfTheBumblebee",
-                 description: "Lightning-fast Rimsky-Korsakov",
-                 difficulty: "Advanced",
-                 composer: "Rimsky-Korsakov"),
-        DemoSong(title: "Chopin Nocturne Op. 9 No. 1",
-                 resourceName: "ChopinNocturneOp9No1",
-                 description: "Expressive Romantic nocturne",
-                 difficulty: "Advanced",
-                 composer: "Chopin"),
+        DemoSong(title: "C Major Scale", resourceName: "CMajorScale",
+                 description: "Foundation finger exercise", difficulty: "Beginner", composer: "Exercise"),
+        DemoSong(title: "Hot Cross Buns", resourceName: "HotCrossBuns",
+                 description: "Three-note starter piece", difficulty: "Beginner", composer: "Traditional"),
+        DemoSong(title: "Mary Had a Little Lamb", resourceName: "MaryHadALittleLamb",
+                 description: "Simple right-hand melody", difficulty: "Beginner", composer: "Traditional"),
+        DemoSong(title: "Twinkle Twinkle Little Star", resourceName: "TwinkleTwinkle",
+                 description: "Classic first song", difficulty: "Beginner", composer: "Traditional"),
+        DemoSong(title: "Ode to Joy", resourceName: "OdeToJoy",
+                 description: "Beethoven's famous theme", difficulty: "Intermediate", composer: "Beethoven"),
+        DemoSong(title: "Minuet in G", resourceName: "MinuetInG",
+                 description: "Baroque dance, two hands", difficulty: "Intermediate", composer: "Bach / Petzold"),
+        DemoSong(title: "Für Elise", resourceName: "FurElise",
+                 description: "Iconic Beethoven melody", difficulty: "Intermediate", composer: "Beethoven"),
+        DemoSong(title: "Flight of the Bumblebee", resourceName: "FlightOfTheBumblebee",
+                 description: "Lightning-fast Rimsky-Korsakov", difficulty: "Advanced", composer: "Rimsky-Korsakov"),
+        DemoSong(title: "Chopin Nocturne Op. 9 No. 1", resourceName: "ChopinNocturneOp9No1",
+                 description: "Expressive Romantic nocturne", difficulty: "Advanced", composer: "Chopin"),
     ]
 }
 

@@ -2,7 +2,8 @@
 //  OnboardingView.swift
 //  MyPianoInstructor
 //
-//  Created by Jason Fang on 2/13/26.
+//  First launch: the product on stage. A live cascade of notes runs behind
+//  three short pages; one button gets you in.
 //
 
 import SwiftUI
@@ -15,146 +16,137 @@ struct OnboardingView: View {
     @AppStorage("hasSeenPlayerWalkthrough") private var hasSeenWalkthrough = false
     @State private var currentPage = 0
 
-    private let pages: [(icon: String, title: String, subtitle: String)] = [
-        ("person.3.sequence.fill", "Piano for Everyone",
-         "Piano lessons cost $50 to $100 per hour. Cascade brings professional-quality guidance to anyone with a phone, completely free."),
-        ("doc.viewfinder", "Any Sheet Music, Instantly",
-         "Scan printed sheet music with your camera, import a PDF, or open a MusicXML file, and watch it turn into a visual falling-note lesson."),
-        ("hand.tap.fill", "Learn at Your Pace",
-         "Slow down to 25%, practice one hand at a time, loop tricky sections, and use Listen Mode to study a piece before you play it."),
-        ("chart.bar.fill", "Track Your Journey",
-         "Your practice calendar, streaks, and accuracy scores show real progress over time. The same evidence-based feedback professional teachers use."),
-        ("person.3.fill", "Share Your Progress",
-         "Celebrate milestones with beautiful share cards. Inspire a friend to start learning. Piano education is more powerful when we grow together.")
+    private let pages: [(eyebrow: String, title: String, body: String)] = [
+        ("Welcome to Cascade",
+         "Sheet music in.\nFalling notes out.",
+         "Scan a page, import a file, or pick a starter piece. It becomes a lesson you can watch, slow down, and play along with."),
+        ("Learn at your pace",
+         "Loop the hard bar.\nHalf the speed.\nOne hand at a time.",
+         "Note-by-note feedback on the on-screen keys or your MIDI piano, and a listen mode for studying a piece first."),
+        ("Make it yours",
+         "Export videos.\nKeep a streak.",
+         "Render any piece as a 1080p video with real piano sound, and watch your practice calendar fill in."),
     ]
 
     private func dismiss() {
-        // Only queue the tutorial on the very first run — once seen it shouldn't
-        // block the notification prompt on every subsequent onboarding dismissal.
-        if !hasSeenWalkthrough {
-            pendingTutorialShow = true
-        }
+        if !hasSeenWalkthrough { pendingTutorialShow = true }
         withAnimation { hasCompletedOnboarding = true }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            TabView(selection: $currentPage) {
-                ForEach(pages.indices, id: \.self) { index in
-                    onboardingPage(pages[index], index: index)
-                        .tag(index)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
+        ZStack {
+            StageBackground().ignoresSafeArea()
 
-            // Bottom button
-            Button {
-                if currentPage < pages.count - 1 {
-                    withAnimation { currentPage += 1 }
-                } else {
-                    dismiss()
-                }
-            } label: {
-                Text(currentPage < pages.count - 1 ? "Next" : "Get Started")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(AppTheme.accentGradient)
-                    .cornerRadius(16)
-            }
-            .padding(.horizontal, 30)
-            .padding(.bottom, 20)
+            // Live notes behind everything, dimmed so type stays readable.
+            OnboardingCascade()
+                .ignoresSafeArea()
+                .opacity(0.5)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: .black, location: 0.12),
+                            .init(color: .black, location: 0.42),
+                            .init(color: .clear, location: 0.58),
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    )
+                )
 
-            if currentPage < pages.count - 1 {
-                Button("Skip") { dismiss() }
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 16)
-            } else {
-                Spacer().frame(height: 20)
-            }
-        }
-        .background {
-            MeshGradientBackground()
-                .opacity(0.3)
-        }
-    }
-
-    private func onboardingPage(_ page: (icon: String, title: String, subtitle: String), index: Int) -> some View {
-        VStack(spacing: 20) {
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(.clear)
-                    .frame(width: 120, height: 120)
-                    .background {
-                        MeshGradientCard()
-                            .clipShape(Circle())
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    KeyboardStripView(highlighted: [60, 67])
+                        .frame(width: 96, height: 22)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                    Spacer()
+                    if currentPage < pages.count - 1 {
+                        Button("Skip") { dismiss() }
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Brand.textSecondary)
                     }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
 
-                Image(systemName: page.icon)
-                    .font(.system(size: 48))
-                    .foregroundColor(.white)
+                Spacer()
+
+                TabView(selection: $currentPage) {
+                    ForEach(pages.indices, id: \.self) { index in
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(pages[index].eyebrow).eyebrowStyle(Brand.teal)
+                            Text(pages[index].title)
+                                .font(CascadeFont.display(36))
+                                .foregroundStyle(Brand.textPrimary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(pages[index].body)
+                                .font(.system(size: 17))
+                                .foregroundStyle(Brand.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .tag(index)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 320)
+
+                HStack(spacing: 6) {
+                    ForEach(pages.indices, id: \.self) { i in
+                        Capsule()
+                            .fill(i == currentPage ? Brand.teal : Brand.textTertiary.opacity(0.5))
+                            .frame(width: i == currentPage ? 22 : 6, height: 6)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: currentPage)
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+
+                Button {
+                    if currentPage < pages.count - 1 {
+                        withAnimation { currentPage += 1 }
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Text(currentPage < pages.count - 1 ? "Continue" : "Start playing")
+                }
+                .buttonStyle(.cascadePrimary)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
             }
-
-            // Live falling-notes mini demo on the "Any Sheet Music" slide
-            if index == 1 {
-                MiniDemoView()
-                    .padding(.horizontal, 30)
-            }
-
-            Text(page.title)
-                .font(.title).bold()
-                .multilineTextAlignment(.center)
-
-            Text(page.subtitle)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-
-            Spacer()
-            Spacer()
         }
+        .preferredColorScheme(.dark)
     }
 }
 
-// MARK: - Mini Live Demo View (used in onboarding slide 2)
-
-private struct MiniDemoView: View {
+/// Full-screen looping cascade used as the onboarding backdrop.
+private struct OnboardingCascade: View {
     @Environment(ThemeManager.self) var themeManager
 
-    private static let loopDuration: TimeInterval = 4.5
+    private static let loopDuration: TimeInterval = 9
     private static let demoNotes: [NoteEvent] = {
-        // A simple C major arpeggio for visual demonstration
-        let pitches = [60, 64, 67, 72, 67, 64, 60, 64, 67, 72, 60, 67]
-        return pitches.enumerated().map { i, p in
-            NoteEvent(
-                pitch: p,
-                startTime: Double(i) * 0.38,
-                duration: 0.33,
-                voice: i % 4 == 0 ? 2 : 1
-            )
+        // A gentle arpeggiated progression across both hands.
+        let rh = [72, 76, 79, 83, 79, 76, 74, 77, 81, 84, 81, 77, 76, 79, 83, 86, 83, 79, 74, 77, 81, 79, 76, 72]
+        let lh = [48, 55, 50, 57, 52, 59, 43, 50]
+        var notes: [NoteEvent] = []
+        for (i, p) in rh.enumerated() {
+            notes.append(NoteEvent(pitch: p, startTime: Double(i) * 0.36, duration: 0.32, voice: 1))
         }
+        for (i, p) in lh.enumerated() {
+            notes.append(NoteEvent(pitch: p, startTime: Double(i) * 1.08, duration: 1.0, voice: 2))
+        }
+        return notes.sorted { $0.startTime < $1.startTime }
     }()
 
-    // Reference date used to compute elapsed time, looped
     @State private var startDate = Date()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
             let elapsed = context.date.timeIntervalSince(startDate)
             let looped = elapsed.truncatingRemainder(dividingBy: Self.loopDuration)
-            FallingNotesView(notes: Self.demoNotes, currentTime: looped, lookahead: 2.0)
+            FallingNotesView(notes: Self.demoNotes, currentTime: looped, lookahead: 5.0)
         }
-        .frame(height: 100)
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-        )
         .onAppear { startDate = Date() }
     }
 }

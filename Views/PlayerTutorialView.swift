@@ -128,7 +128,6 @@ struct PlayerTutorialView: View {
             }
         }
         .landscapeOnly()
-        .ignoresSafeArea()
         .onAppear { demoStartDate = Date() }
     }
 
@@ -164,8 +163,7 @@ struct PlayerTutorialView: View {
                 .foregroundColor(AppTheme.accent)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
-                .background(AppTheme.cardBackground)
-                .cornerRadius(8)
+                .background(Brand.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             // Listen mode button
             Image(systemName: "headphones.circle")
@@ -201,7 +199,7 @@ struct PlayerTutorialView: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(Color.gray.opacity(0.2))
+                        .fill(Brand.hairline)
                         .frame(height: 4)
                     Capsule()
                         .fill(AppTheme.accent)
@@ -236,12 +234,13 @@ struct PlayerTutorialView: View {
             HStack(spacing: 4) {
                 ForEach([0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { rate in
                     Text("\(String(format: "%g", rate))x")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(rate == 1.0 ? .white : .primary)
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .foregroundColor(rate == 1.0 ? Brand.ink : Brand.textSecondary)
                         .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(rate == 1.0 ? AppTheme.accent : AppTheme.cardBackground)
-                        .cornerRadius(6)
+                        .padding(.vertical, 4)
+                        .background(rate == 1.0 ? Brand.teal : Brand.surfaceHigh, in: Capsule())
                 }
             }
             .tutorialFrame(.speedButtons)

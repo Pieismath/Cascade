@@ -30,32 +30,20 @@ struct SongDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
 
-                // MARK: - Header Card
+                // MARK: - Header (score art)
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "music.note")
-                            .font(.title)
-                            .foregroundColor(.white)
-                            .frame(width: 50, height: 50)
-                            .background(AppTheme.heroGradient)
-                            .cornerRadius(12)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(song.title)
-                                .font(.title2).bold()
-                            HStack(spacing: 8) {
-                                Text(song.createdAt, style: .date)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                DifficultyBadge(level: analysis.level)
-                            }
-                        }
-                        Spacer()
+                    ScoreArtView(playback: playback, window: 16, cornerRadius: 24)
+                        .frame(height: 200)
+                    Text(song.title)
+                        .font(CascadeFont.display(30))
+                        .foregroundStyle(Brand.textPrimary)
+                    HStack(spacing: 8) {
+                        DifficultyBadge(level: analysis.level)
+                        Text("Added \(song.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.caption)
+                            .foregroundStyle(Brand.textSecondary)
                     }
                 }
-                .padding()
-                .background(AppTheme.cardBackground)
-                .cornerRadius(16)
 
                 // MARK: - Stats Grid
                 LazyVGrid(columns: [
@@ -83,7 +71,7 @@ struct SongDetailView: View {
 
                     miniPianoRoll
                         .frame(height: 100)
-                        .background(Color.black.opacity(0.05))
+                        .background(Brand.surface)
                         .cornerRadius(12)
                 }
 
@@ -94,13 +82,8 @@ struct SongDetailView: View {
                         tabSelection = 2
                     } label: {
                         Label("Play", systemImage: "play.fill")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(AppTheme.accentGradient)
-                            .cornerRadius(14)
                     }
+                    .buttonStyle(.cascadePrimary)
 
                     HStack(spacing: 12) {
                         Button(role: .destructive) {
@@ -118,6 +101,7 @@ struct SongDetailView: View {
             }
             .padding()
         }
+        .stageBackground()
         .navigationTitle("Song Details")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Delete Song?", isPresented: $showDeleteAlert) {
@@ -167,9 +151,7 @@ struct SongDetailView: View {
                 )
             }
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
     }
 
     private func difficultyDetail(icon: String, label: String, value: String) -> some View {
@@ -212,9 +194,7 @@ struct SongDetailView: View {
                 }
             }
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
     }
 
     // MARK: - Components
@@ -230,8 +210,7 @@ struct SongDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(12)
+        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var miniPianoRoll: some View {

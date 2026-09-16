@@ -52,6 +52,7 @@ struct RootTabView: View {
                     let playback = libraryVM.cachedPlayback(for: selectedSong)
                     PlayerView(playback: playback, songTitle: selectedSong.title, song: selectedSong)
                         .id(selectedSong.id)
+                        .stageBackground()
                         .environment(libraryVM)
                         .environment(statsManager)
                         .environment(achievementManager)

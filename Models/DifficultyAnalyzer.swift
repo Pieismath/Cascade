@@ -237,18 +237,8 @@ struct DifficultyBadge: View {
     let level: DifficultyAnalyzer.Level
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: level.icon)
-                .font(.system(size: 9))
-            Text(level.label)
-                .font(.system(size: 10, weight: .bold))
-        }
-        .foregroundColor(level.color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(level.color.opacity(0.12))
-        .cornerRadius(6)
-        .accessibilityLabel("Difficulty: \(level.label)")
+        Chip(text: level.label, icon: level.icon, tint: level.brandColor)
+            .accessibilityLabel("Difficulty: \(level.label)")
     }
 }
 

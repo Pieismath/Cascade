@@ -26,57 +26,25 @@ struct StatsView: View {
             VStack(alignment: .leading, spacing: 20) {
 
                 // MARK: - Header
-                Text("Your Progress")
-                    .font(.title).bold()
-                    .padding(.top)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Keep the streak alive").eyebrowStyle()
+                    Text("Progress")
+                        .font(CascadeFont.display(36))
+                        .foregroundStyle(Brand.textPrimary)
+                }
+                .padding(.top, 8)
 
                 // MARK: - Stats Cards
                 LazyVGrid(columns: [
                     GridItem(.flexible()), GridItem(.flexible())
                 ], spacing: 14) {
 
-                    statsCard(
-                        icon: "clock.fill",
-                        value: statsManager.formattedTotalTime,
-                        label: "Practice Time",
-                        color: .indigo
-                    )
-
-                    statsCard(
-                        icon: "flame.fill",
-                        value: "\(statsManager.currentStreak)",
-                        label: "Day Streak",
-                        color: .orange,
-                        animateIcon: true
-                    )
-
-                    statsCard(
-                        icon: "music.note.list",
-                        value: "\(libraryVM.songs.count)",
-                        label: "Songs",
-                        color: .purple
-                    )
-
-                    statsCard(
-                        icon: "checkmark.circle.fill",
-                        value: "\(statsManager.songsCompleted)",
-                        label: "Completed",
-                        color: .green
-                    )
-
-                    statsCard(
-                        icon: "play.circle.fill",
-                        value: "\(statsManager.sessionsCount)",
-                        label: "Sessions",
-                        color: .blue
-                    )
-
-                    statsCard(
-                        icon: "trophy.fill",
-                        value: "\(achievementManager.earnedCount)/\(achievementManager.totalCount)",
-                        label: "Achievements",
-                        color: .orange
-                    )
+                    statsCard(icon: "clock", value: statsManager.formattedTotalTime, label: "Practice time", color: Brand.teal)
+                    statsCard(icon: "flame", value: "\(statsManager.currentStreak)", label: "Day streak", color: Brand.amber, animateIcon: true)
+                    statsCard(icon: "music.note.list", value: "\(libraryVM.songs.count)", label: "Pieces", color: Brand.violet)
+                    statsCard(icon: "checkmark", value: "\(statsManager.songsCompleted)", label: "Completed", color: Brand.mint)
+                    statsCard(icon: "play", value: "\(statsManager.sessionsCount)", label: "Sessions", color: Brand.teal)
+                    statsCard(icon: "trophy", value: "\(achievementManager.earnedCount)/\(achievementManager.totalCount)", label: "Awards", color: Brand.coral)
                 }
 
                 // MARK: - Personal Best Streak
@@ -98,13 +66,7 @@ struct StatsView: View {
                         }
                         Spacer()
                     }
-                    .padding()
-                    .background(Color.yellow.opacity(0.1))
-                    .cornerRadius(14)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.yellow.opacity(0.3), lineWidth: 1.5)
-                    )
+                    .cascadeCard(padding: 16, radius: 20)
                 }
 
                 // MARK: - Practice Timeline Chart
@@ -121,7 +83,7 @@ struct StatsView: View {
                         AchievementsView()
                             .environment(achievementManager)
                     } label: {
-                        quickLinkCard(icon: "trophy.fill", label: "All Achievements", color: .orange)
+                        quickLinkCard(icon: "trophy", label: "All awards", color: Brand.coral)
                     }
                     .buttonStyle(.plain)
 
@@ -129,7 +91,7 @@ struct StatsView: View {
                         ThemePickerView()
                             .environment(themeManager)
                     } label: {
-                        quickLinkCard(icon: "paintpalette.fill", label: "Customize Theme", color: .purple)
+                        quickLinkCard(icon: "paintpalette", label: "Note colours", color: Brand.violet)
                     }
                     .buttonStyle(.plain)
                 }
@@ -139,8 +101,7 @@ struct StatsView: View {
 
                 // MARK: - Practice Calendar
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Practice Calendar")
-                        .font(.headline)
+                    SectionHeader("Practice calendar")
 
                     practiceCalendar
                 }
@@ -168,18 +129,14 @@ struct StatsView: View {
                 Button {
                     shareProgressCard()
                 } label: {
-                    Label("Share My Progress", systemImage: "square.and.arrow.up")
-                        .font(.subheadline).bold()
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(AppTheme.accentGradient)
-                        .cornerRadius(14)
+                    Label("Share my progress", systemImage: "square.and.arrow.up")
                 }
+                .buttonStyle(.cascadePrimary)
                 .padding(.bottom, 8)
             }
             .padding(.horizontal)
         }
+        .stageBackground()
         .navigationBarHidden(true)
         .onAppear {
             // Evaluate achievements whenever stats view appears
@@ -243,9 +200,7 @@ struct StatsView: View {
                         .padding(.vertical, 4)
                     }
                 }
-                .padding()
-                .background(AppTheme.cardBackground)
-                .cornerRadius(14)
+                .cascadeCard(padding: 16, radius: 14)
             }
         }
     }
@@ -264,17 +219,18 @@ struct StatsView: View {
     private func quickLinkCard(icon: String, label: String, color: Color) -> some View {
         VStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.title2)
-                .foregroundColor(color)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 40, height: 40)
+                .background(color.opacity(0.14), in: Circle())
             Text(label)
-                .font(.caption).bold()
-                .foregroundColor(.primary)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(Brand.textPrimary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Practice Reminders Card
@@ -282,9 +238,9 @@ struct StatsView: View {
     private var practiceRemindersCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
-                Image(systemName: "bell.fill")
-                    .foregroundColor(.indigo)
-                Text("Practice Reminders")
+                Image(systemName: "bell")
+                    .foregroundStyle(Brand.teal)
+                Text("Practice reminders")
                     .font(.headline)
             }
 
@@ -322,9 +278,7 @@ struct StatsView: View {
                 }
             }
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
     }
 
     // MARK: - Components
@@ -332,22 +286,20 @@ struct StatsView: View {
     private func statsCard(icon: String, value: String, label: String, color: Color, animateIcon: Bool = false) -> some View {
         VStack(spacing: 8) {
             HStack {
-                if animateIcon {
-                    Image(systemName: icon)
-                        .foregroundColor(color)
-                        .font(.title3)
-                        .symbolEffect(.variableColor.iterative, isActive: statsManager.currentStreak > 0)
-                } else {
-                    Image(systemName: icon)
-                        .foregroundColor(color)
-                        .font(.title3)
-                }
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(color)
+                    .frame(width: 32, height: 32)
+                    .background(color.opacity(0.14), in: Circle())
+                    .symbolEffect(.bounce, value: animateIcon && statsManager.currentStreak > 0)
                 Spacer()
             }
 
             HStack {
                 Text(value)
-                    .font(.title2).bold()
+                    .font(CascadeFont.number(26))
+                    .foregroundStyle(Brand.textPrimary)
+                    .lineLimit(1).minimumScaleFactor(0.6)
                 Spacer()
             }
 
@@ -358,9 +310,7 @@ struct StatsView: View {
                 Spacer()
             }
         }
-        .padding(14)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 14, radius: 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
     }
@@ -412,17 +362,17 @@ struct StatsView: View {
                         RoundedRectangle(cornerRadius: 6)
                             .fill(
                                 practiced
-                                ? Color.green
+                                ? Brand.teal
                                 : isFuture
                                     ? Color.clear
-                                    : Color.gray.opacity(0.15)
+                                    : Brand.surfaceHigh
                             )
                             .frame(height: 32)
                             .overlay(
                                 Text("\(calendar.component(.day, from: date))")
                                     .font(.caption2).bold()
                                     .foregroundColor(
-                                        practiced ? .white
+                                        practiced ? Brand.ink
                                         : isFuture ? .clear
                                         : .secondary
                                     )
@@ -443,9 +393,7 @@ struct StatsView: View {
                 }
             }
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
     }
 
     // MARK: - Day Detail Section
@@ -500,9 +448,7 @@ struct StatsView: View {
                 }
             }
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
     }
 
     // MARK: - Helpers
@@ -582,9 +528,7 @@ struct StatsView: View {
             .frame(height: 130)
             .animation(.easeOut(duration: 0.8), value: statsManager.recentDailySummaries.map(\.totalSeconds))
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
     }
 
     private func shortDateLabel(_ dateStr: String) -> String {

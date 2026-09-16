@@ -52,7 +52,7 @@ struct AchievementsView: View {
             // Progress ring
             ZStack {
                 Circle()
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                    .stroke(Brand.hairline, lineWidth: 8)
                     .frame(width: 80, height: 80)
 
                 Circle()
@@ -85,9 +85,7 @@ struct AchievementsView: View {
 
             Spacer()
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(16)
+        .cascadeCard(padding: 16, radius: 16)
         .padding(.top)
     }
 

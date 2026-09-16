@@ -15,7 +15,7 @@ final class LaunchTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let onboarding = app.buttons["Next"]
+        let onboarding = app.buttons["Continue"]
         let home = app.tabBars.buttons["Home"]
         let reached = onboarding.waitForExistence(timeout: 10) || home.waitForExistence(timeout: 10)
         XCTAssertTrue(reached, "App did not reach onboarding or the home tab")

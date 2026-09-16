@@ -367,20 +367,21 @@ struct PlayerView: View {
                 NotificationCenter.default.post(name: .switchTab, object: 0)
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.headline)
             }
+            .buttonStyle(IconButtonStyle())
             .accessibilityLabel("Back to library")
 
             Text(songTitle.isEmpty ? "Player" : songTitle)
-                .font(.headline).bold()
+                .font(CascadeFont.display(18))
+                .foregroundStyle(Brand.textPrimary)
                 .lineLimit(1)
 
             Spacer()
 
             // Hand separation toggles
             HStack(spacing: 4) {
-                handToggle(label: "RH", color: .cyan, isOn: $showRightHand)
-                handToggle(label: "LH", color: .orange, isOn: $showLeftHand)
+                handToggle(label: "RH", color: Brand.teal, isOn: $showRightHand)
+                handToggle(label: "LH", color: Brand.amber, isOn: $showLeftHand)
             }
 
             // MIDI indicator
@@ -393,20 +394,18 @@ struct PlayerView: View {
                         .frame(width: 6, height: 6)
                 }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(AppTheme.cardBackground)
-                .cornerRadius(8)
+                .padding(.vertical, 6)
+                .background(Brand.surfaceHigh, in: Capsule())
                 .accessibilityLabel("MIDI keyboard connected")
             }
 
             // Notes progress
             Text("\(session.notesReached)/\(filteredNotes.count)")
-                .font(.caption).bold()
-                .foregroundColor(AppTheme.accent)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundColor(Brand.teal)
                 .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(AppTheme.cardBackground)
-                .cornerRadius(8)
+                .padding(.vertical, 6)
+                .background(Brand.teal.opacity(0.14), in: Capsule())
                 .accessibilityLabel("\(session.notesReached) of \(filteredNotes.count) notes reached")
 
             // Accuracy ring
@@ -437,20 +436,18 @@ struct PlayerView: View {
                 listenModeEnabled.toggle()
                 if listenModeEnabled { touchedPitches.removeAll() }
             } label: {
-                Image(systemName: listenModeEnabled ? "headphones.circle.fill" : "headphones.circle")
-                    .font(.caption)
-                    .foregroundColor(listenModeEnabled ? .blue : .secondary)
+                Image(systemName: "headphones")
             }
+            .buttonStyle(IconButtonStyle(active: listenModeEnabled))
             .accessibilityLabel(listenModeEnabled ? "Listen mode on — touch disabled" : "Listen mode off")
 
             // Help / tutorial button
             Button {
                 showTutorial = true
             } label: {
-                Image(systemName: "questionmark.circle")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Image(systemName: "questionmark")
             }
+            .buttonStyle(IconButtonStyle())
             .accessibilityLabel("Show tutorial")
 
         }
@@ -468,13 +465,9 @@ struct PlayerView: View {
                     .font(.caption).bold()
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(isOn.wrappedValue ? color.opacity(0.2) : Color.gray.opacity(0.15))
-            .cornerRadius(8)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isOn.wrappedValue ? color : Color.clear, lineWidth: 1.5)
-            )
+            .padding(.vertical, 6)
+            .background(isOn.wrappedValue ? color.opacity(0.2) : Brand.surfaceHigh, in: Capsule())
+            .overlay(Capsule().strokeBorder(isOn.wrappedValue ? color : Brand.hairline, lineWidth: 1.2))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(label == "RH" ? "Right hand" : "Left hand") \(isOn.wrappedValue ? "enabled" : "disabled")")
@@ -603,12 +596,13 @@ struct PlayerView: View {
                         changeSpeed(to: rate)
                     } label: {
                         Text("\(String(format: "%g", rate))x")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(playbackRate == rate ? .white : .primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(playbackRate == rate ? AppTheme.accent : AppTheme.cardBackground)
-                            .cornerRadius(6)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .fixedSize()
+                            .foregroundColor(playbackRate == rate ? Brand.ink : Brand.textSecondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 5)
+                            .background(playbackRate == rate ? Brand.teal : Brand.surfaceHigh, in: Capsule())
                     }
                     .accessibilityLabel("Speed \(String(format: "%g", rate))x")
                     .accessibilityAddTraits(playbackRate == rate ? .isSelected : [])
@@ -628,18 +622,23 @@ struct PlayerView: View {
                     session.loopEnd = end
                 }
             } label: {
-                Image(systemName: session.isLooping ? "repeat.circle.fill" : "repeat.circle")
-                    .font(.title3)
-                    .foregroundColor(session.isLooping ? AppTheme.loopMarker : .secondary)
+                Image(systemName: "repeat")
             }
+            .buttonStyle(IconButtonStyle(active: session.isLooping, tint: Brand.amber))
             .accessibilityLabel(session.isLooping ? "Loop enabled, tap to disable" : "Enable loop")
 
             // Play / Pause
             Button(action: togglePlay) {
-                Image(systemName: clock.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.largeTitle)
-                    .foregroundColor(AppTheme.accent)
+                ZStack {
+                    Circle().fill(.white).frame(width: 46, height: 46)
+                    Image(systemName: clock.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(Brand.ink)
+                        .offset(x: clock.isPlaying ? 0 : 1.5)
+                }
+                .glow(Brand.teal, radius: 12, opacity: 0.55)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(clock.isPlaying ? "Pause" : "Play")
 
             // Reset
@@ -647,20 +646,18 @@ struct PlayerView: View {
                 stop()
                 session.reset()
             } label: {
-                Image(systemName: "arrow.counterclockwise.circle")
-                    .font(.title3)
-                    .foregroundColor(.secondary)
+                Image(systemName: "arrow.counterclockwise")
             }
+            .buttonStyle(IconButtonStyle())
             .accessibilityLabel("Reset")
 
             // Export
             Button {
                 startExport()
             } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.title3)
-                    .foregroundColor(exporter.isExporting ? AppTheme.accent : .secondary)
+                Image(systemName: "film")
             }
+            .buttonStyle(IconButtonStyle(active: exporter.isExporting))
             .disabled(exporter.isExporting)
             .accessibilityLabel("Export video")
         }

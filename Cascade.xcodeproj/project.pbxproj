@@ -42,6 +42,16 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		AABB00212EFFF00000000011 /* MyPianoInstructorTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MyPianoInstructorTests;
+			sourceTree = "<group>";
+		};
+		AABB00222EFFF00000000012 /* MyPianoInstructorUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MyPianoInstructorUITests;
+			sourceTree = "<group>";
+		};
 		F2C938642EDFBD3600579BDB /* App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = App;
@@ -70,16 +80,6 @@
 		F2C938AE2EDFF54200579BDB /* Audio */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Audio;
-			sourceTree = "<group>";
-		};
-		AABB00212EFFF00000000011 /* MyPianoInstructorTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MyPianoInstructorTests;
-			sourceTree = "<group>";
-		};
-		AABB00222EFFF00000000012 /* MyPianoInstructorUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = MyPianoInstructorUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -449,7 +449,6 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Cascade uses the camera to scan printed sheet music and turn it into an interactive falling-note lesson.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -485,7 +484,6 @@
 				INFOPLIST_KEY_NSCameraUsageDescription = "Cascade uses the camera to scan printed sheet music and turn it into an interactive falling-note lesson.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (

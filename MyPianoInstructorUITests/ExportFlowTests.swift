@@ -17,24 +17,18 @@ final class ExportFlowTests: XCTestCase {
         app.launch()
 
         // Onboarding (first launch only)
-        let skip = app.buttons["Skip"]
-        if skip.waitForExistence(timeout: 5) { skip.tap() }
-
-        // Player tutorial is queued after the first onboarding dismissal.
-        let closeTutorial = app.buttons["Close tutorial"]
-        if closeTutorial.waitForExistence(timeout: 5) { closeTutorial.tap() }
-
-        // Notification prompt (shows on launches where the tutorial didn't)
-        let notNow = app.alerts.buttons["Not Now"]
-        if notNow.waitForExistence(timeout: 3) { notNow.tap() }
+        app.dismissFirstLaunchChrome()
 
         // Add tab → starter library → Twinkle
         let addTab = app.tabBars.buttons["Add"]
         XCTAssertTrue(addTab.waitForExistence(timeout: 10), "tab bar not found")
         addTab.tap()
 
-        let twinkle = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Twinkle'")).firstMatch
-        XCTAssertTrue(twinkle.waitForExistence(timeout: 10), "starter song not listed")
+        // Rows below the fold aren't in the accessibility tree until scrolled into view.
+        let twinkle = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Twinkle'")).firstMatch
+        var attempts = 0
+        while !twinkle.exists && attempts < 4 { app.swipeUp(); attempts += 1 }
+        XCTAssertTrue(twinkle.waitForExistence(timeout: 5), "starter song not listed")
         twinkle.tap()
 
         // Player opens (landscape). Export button has an accessibility label.

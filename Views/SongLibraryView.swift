@@ -2,14 +2,17 @@
 //  SongLibraryView.swift
 //  MyPianoInstructor
 //
-//  Created by Jason Fang on 11/17/25.
+//  Home: a greeting, the piece you're working on as a large piece of score
+//  art, quick actions, and the library as a list of art thumbnails.
 //
+
 import SwiftUI
 import TipKit
 
 struct SongLibraryView: View {
     @Environment(SongLibraryViewModel.self) var libraryVM
     @Environment(PracticeStatsManager.self) var statsManager
+    @Environment(AchievementManager.self) var achievementManager
     @Environment(ThemeManager.self) var themeManager
 
     @Binding var selectedSong: Song?
@@ -20,102 +23,41 @@ struct SongLibraryView: View {
     @State private var tutorialAfterAbout = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 28) {
+                header
+                    .padding(.horizontal, 20)
 
-                // MARK: - Hero Carousel
-                HomeCarouselView(selectedSong: $selectedSong, tabSelection: $tabSelection, showAbout: $showAbout)
-
-                // MARK: - Continue Practicing
-                if let lastSong = libraryVM.recentSongs.first {
-                    continuePracticingCard(lastSong)
-                        .padding(.horizontal)
-                }
-
-                // MARK: - Quick Actions
-                HStack(spacing: 12) {
-                    quickActionButton(
-                        icon: "doc.badge.plus",
-                        label: "Import",
-                        color: .indigo
-                    ) {
-                        tabSelection = 1
-                    }
-
-                    quickActionButton(
-                        icon: "trophy.fill",
-                        label: "Achievements",
-                        color: .orange
-                    ) {
-                        tabSelection = 3
-                    }
-
-                    // Theme shortcut with live color preview
-                    NavigationLink {
-                        ThemePickerView()
-                            .environment(themeManager)
-                    } label: {
-                        VStack(spacing: 8) {
-                            HStack(spacing: 3) {
-                                Circle().fill(themeManager.effectiveRightHand).frame(width: 8, height: 8)
-                                Circle().fill(themeManager.effectiveLeftHand).frame(width: 8, height: 8)
-                                Circle().fill(themeManager.effectiveBlackKey).frame(width: 8, height: 8)
-                            }
-                            Text("Theme")
-                                .font(.caption).bold()
-                                .foregroundColor(.primary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(AppTheme.cardBackground)
-                        .cornerRadius(14)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Customize theme, currently \(themeManager.selectedTheme.rawValue)")
-                }
-                .padding(.horizontal)
-
-                // MARK: - Coaching Tip
-                TipView(ImportSongTip())
-                    .tipBackground(AppTheme.cardBackground)
-                    .padding(.horizontal)
-
-                // MARK: - Songs List
-                if libraryVM.songs.isEmpty {
-                    emptyStateView
+                if let song = libraryVM.recentSongs.first {
+                    upNextCard(song)
+                        .padding(.horizontal, 20)
                 } else {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Your Songs")
-                                .font(.title3).bold()
-                            Spacer()
-                            Text("\(libraryVM.songs.count) song\(libraryVM.songs.count == 1 ? "" : "s")")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.horizontal)
-
-                        ForEach(libraryVM.songs) { song in
-                            songCard(song)
-                                .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.75))) { content, phase in
-                                    content
-                                        .opacity(phase.isIdentity ? 1.0 : 0.0)
-                                        .offset(x: phase.isIdentity ? 0 : 24)
-                                        .scaleEffect(phase.isIdentity ? 1.0 : 0.96, anchor: .trailing)
-                                }
-                        }
-                    }
+                    emptyHero
+                        .padding(.horizontal, 20)
                 }
+
+                quickActions
+                    .padding(.horizontal, 20)
+
+                if statsManager.sessionsCount > 0 {
+                    momentumStrip
+                        .padding(.horizontal, 20)
+                }
+
+                if !libraryVM.songs.isEmpty {
+                    library
+                }
+
+                Spacer(minLength: 24)
             }
-            .padding(.top)
+            .padding(.top, 8)
         }
+        .stageBackground()
         .navigationBarHidden(true)
         .sheet(isPresented: $showAbout, onDismiss: {
             if tutorialAfterAbout {
                 tutorialAfterAbout = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showTutorial = true
-                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showTutorial = true }
             }
         }) {
             AboutCascadeSheet(isPresented: $showAbout, triggerTutorial: $tutorialAfterAbout)
@@ -130,129 +72,271 @@ struct SongLibraryView: View {
         }
     }
 
-    // MARK: - Components
+    // MARK: - Header
 
-    private func quickActionButton(icon: String, label: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(color)
-                Text(label)
-                    .font(.caption).bold()
-                    .foregroundColor(.primary)
+    private var header: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(greeting).eyebrowStyle()
+                Text("Cascade")
+                    .font(CascadeFont.display(36))
+                    .foregroundStyle(Brand.textPrimary)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(14)
+            Spacer()
+            if statsManager.currentStreak > 0 {
+                Chip(text: "\(statsManager.currentStreak) day streak", icon: "flame.fill", tint: Brand.amber)
+            }
+            Button { showAbout = true } label: {
+                Image(systemName: "info")
+            }
+            .buttonStyle(IconButtonStyle())
+            .accessibilityLabel("About Cascade")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 
-    private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            ZStack {
-                Circle()
-                    .fill(.clear)
-                    .frame(width: 100, height: 100)
-                    .background {
-                        MeshGradientCard()
-                            .clipShape(Circle())
-                    }
-                Image(systemName: "pianokeys.rectangle.fill")
-                    .font(.system(size: 44))
-                    .foregroundColor(.white)
-                    .symbolEffect(.pulse, isActive: true)
-            }
-
-            Text("Your Piano Journey Starts Here")
-                .font(.title3).bold()
-                .multilineTextAlignment(.center)
-
-            Text("Add a free song from the Starter Library — no internet needed.\nNo piano at home? Practice right on screen.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            Button {
-                tabSelection = 1
-            } label: {
-                Label("Browse Free Songs", systemImage: "music.note.list")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(AppTheme.accentGradient)
-                    .cornerRadius(14)
-            }
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        switch hour {
+        case 5..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        case 17..<22: return "Good evening"
+        default: return "Night session"
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
-        .padding(.horizontal)
     }
 
-    private func songCard(_ song: Song) -> some View {
+    // MARK: - Up next
+
+    private func upNextCard(_ song: Song) -> some View {
         let playback = libraryVM.cachedPlayback(for: song)
         let difficulty = DifficultyAnalyzer.analyze(playback: playback)
-        let accent = difficulty.level.color
 
         return Button {
             selectedSong = song
             tabSelection = 2
         } label: {
-            HStack(spacing: 0) {
-                // Difficulty accent bar
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(accent)
-                    .frame(width: 4)
-                    .padding(.vertical, 10)
-                    .padding(.trailing, 12)
+            ZStack(alignment: .bottomLeading) {
+                ScoreArtView(playback: playback, window: 16, cornerRadius: 28)
+                    .frame(height: 300)
 
-                // Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(accent.opacity(0.15))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "music.note")
-                        .font(.title3)
-                        .foregroundColor(accent)
-                }
-                .padding(.trailing, 12)
+                LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
 
-                // Text
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(song.lastPlayedAt == nil ? "Up next" : "Continue practicing")
+                        .eyebrowStyle(.white.opacity(0.7))
                     Text(song.title)
-                        .font(.subheadline).bold()
-                        .foregroundColor(.primary)
-                    HStack(spacing: 6) {
-                        DifficultyBadge(level: difficulty.level)
-                        Text(formatDuration(song.durationSeconds))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        .font(CascadeFont.display(30))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                    HStack(spacing: 8) {
+                        Chip(text: difficulty.level.label, icon: difficulty.level.icon, tint: difficulty.level.brandColor, filled: true)
+                        Chip(text: formatClock(song.durationSeconds), icon: "clock", tint: .white)
+                        Spacer()
+                        ZStack {
+                            Circle().fill(.white).frame(width: 52, height: 52)
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Brand.ink)
+                                .offset(x: 2)
+                        }
+                        .glow(Brand.teal, radius: 14, opacity: 0.6)
                     }
                 }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.trailing, 4)
+                .padding(22)
             }
-            .padding(14)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(14)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(accent.opacity(0.2), lineWidth: 1)
-            )
         }
         .buttonStyle(.plain)
-        .padding(.horizontal)
+        .accessibilityLabel("Continue practicing \(song.title)")
+    }
+
+    private var emptyHero: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ScoreArtView(playback: SongLibraryView.demoPlayback, window: 10, cornerRadius: 28)
+                .frame(height: 220)
+                .overlay(alignment: .topLeading) {
+                    Text("Your first piece goes here")
+                        .eyebrowStyle(.white.opacity(0.75))
+                        .padding(18)
+                }
+            Text("Sheet music in, falling notes out.")
+                .font(CascadeFont.display(28))
+                .foregroundStyle(Brand.textPrimary)
+            Text("Scan a page, import a file, or grab something from the starter library. It plays here in seconds.")
+                .font(.subheadline)
+                .foregroundStyle(Brand.textSecondary)
+            Button {
+                tabSelection = 1
+            } label: {
+                Label("Add your first song", systemImage: "plus")
+            }
+            .buttonStyle(.cascadePrimary)
+        }
+    }
+
+    /// A little C-major figure so the empty state still shows real art.
+    private static let demoPlayback: PlaybackData = {
+        let pitches = [60, 64, 67, 72, 76, 72, 67, 64, 62, 65, 69, 74, 77, 74, 69, 65]
+        let lh = [48, 43, 45, 41]
+        var notes: [NoteEvent] = []
+        for (i, p) in pitches.enumerated() {
+            notes.append(NoteEvent(pitch: p, startTime: Double(i) * 0.5, duration: 0.45, voice: 1))
+        }
+        for (i, p) in lh.enumerated() {
+            notes.append(NoteEvent(pitch: p, startTime: Double(i) * 2.0, duration: 1.9, voice: 2))
+        }
+        return PlaybackData(tempo: 120, totalDuration: 8, notes: notes.sorted { $0.startTime < $1.startTime })
+    }()
+
+    // MARK: - Quick actions
+
+    private var quickActions: some View {
+        HStack(spacing: 10) {
+            quickAction("Scan", icon: "camera.viewfinder", tint: Brand.teal) { tabSelection = 1 }
+            quickAction("Import", icon: "doc.badge.plus", tint: Brand.amber) { tabSelection = 1 }
+            NavigationLink {
+                ThemePickerView().environment(themeManager)
+            } label: {
+                quickActionLabel("Theme", icon: "paintpalette", tint: Brand.violet)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Customize theme, currently \(themeManager.selectedTheme.rawValue)")
+            quickAction("Awards", icon: "trophy", tint: Brand.coral) { tabSelection = 3 }
+        }
+    }
+
+    private func quickAction(_ title: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            quickActionLabel(title, icon: icon, tint: tint)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+
+    private func quickActionLabel(_ title: String, icon: String, tint: Color) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 44, height: 44)
+                .background(tint.opacity(0.14), in: Circle())
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(Brand.textPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
+    }
+
+    // MARK: - Momentum
+
+    private var momentumStrip: some View {
+        HStack(spacing: 0) {
+            momentum(statsManager.formattedTotalTime, "practiced")
+            divider
+            momentum("\(statsManager.sessionsCount)", "sessions")
+            divider
+            momentum("\(statsManager.songsCompleted)", "completed")
+            divider
+            momentum("\(achievementManager.earnedCount)/\(achievementManager.totalCount)", "awards")
+        }
+        .cascadeCard(padding: 14, radius: 20)
+        .onTapGesture { tabSelection = 3 }
+    }
+
+    private var divider: some View {
+        Rectangle().fill(Brand.hairline).frame(width: 1, height: 28)
+    }
+
+    private func momentum(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(CascadeFont.number(17))
+                .foregroundStyle(Brand.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(label).font(.system(size: 10, weight: .semibold)).foregroundStyle(Brand.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Library
+
+    private var library: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader("Your library", subtitle: "\(libraryVM.songs.count) piece\(libraryVM.songs.count == 1 ? "" : "s")") {
+                Button { tabSelection = 1 } label: {
+                    Image(systemName: "plus")
+                }
+                .buttonStyle(IconButtonStyle())
+                .accessibilityLabel("Add music")
+            }
+            .padding(.horizontal, 20)
+
+            VStack(spacing: 10) {
+                ForEach(libraryVM.songs) { song in
+                    songRow(song)
+                        .scrollTransition(.animated(.spring(response: 0.4, dampingFraction: 0.75))) { content, phase in
+                            content
+                                .opacity(phase.isIdentity ? 1 : 0)
+                                .offset(y: phase.isIdentity ? 0 : 16)
+                        }
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    private func songRow(_ song: Song) -> some View {
+        let playback = libraryVM.cachedPlayback(for: song)
+        let difficulty = DifficultyAnalyzer.analyze(playback: playback)
+
+        return Button {
+            selectedSong = song
+            tabSelection = 2
+        } label: {
+            HStack(spacing: 14) {
+                ScoreArtView(playback: playback, window: 8, cornerRadius: 12)
+                    .frame(width: 64, height: 64)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(song.title)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Brand.textPrimary)
+                        .lineLimit(1)
+                    HStack(spacing: 8) {
+                        Text(difficulty.level.label)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(difficulty.level.brandColor)
+                        Text("·").foregroundStyle(Brand.textTertiary)
+                        Text(formatClock(song.durationSeconds))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Brand.textSecondary)
+                        Text("·").foregroundStyle(Brand.textTertiary)
+                        Text("\(playback.notes.count) notes")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(Brand.textSecondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Brand.textSecondary)
+                    .frame(width: 34, height: 34)
+                    .background(Brand.surfaceHigh, in: Circle())
+            }
+            .cascadeCard(padding: 12, radius: 20)
+        }
+        .buttonStyle(.plain)
         .contextMenu {
+            NavigationLink {
+                SongDetailView(song: song, selectedSong: $selectedSong, tabSelection: $tabSelection)
+                    .environment(libraryVM)
+                    .environment(themeManager)
+            } label: {
+                Label("Details", systemImage: "info.circle")
+            }
             Button(role: .destructive) {
                 libraryVM.deleteSong(song)
             } label: {
@@ -260,54 +344,7 @@ struct SongLibraryView: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(song.title), \(difficulty.level.label) difficulty, \(formatDuration(song.durationSeconds))")
-    }
-
-    // MARK: - Continue Practicing Card
-
-    private func continuePracticingCard(_ song: Song) -> some View {
-        Button {
-            selectedSong = song
-            tabSelection = 2
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "play.circle.fill")
-                    .font(.title)
-                    .foregroundColor(AppTheme.accent)
-                    .symbolEffect(.pulse, isActive: true)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Continue Practicing")
-                        .font(.caption).bold()
-                        .foregroundColor(.secondary)
-                    Text(song.title)
-                        .font(.subheadline).bold()
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(14)
-            .background(AppTheme.accent.opacity(0.08))
-            .cornerRadius(14)
-            .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .stroke(AppTheme.accent.opacity(0.3), lineWidth: 1.5)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Continue practicing \(song.title)")
-    }
-
-    private func formatDuration(_ seconds: Int) -> String {
-        let m = seconds / 60
-        let s = seconds % 60
-        return String(format: "%d:%02d", m, s)
+        .accessibilityLabel("\(song.title), \(difficulty.level.label) difficulty, \(formatClock(song.durationSeconds))")
     }
 }
 
@@ -320,97 +357,60 @@ private struct AboutCascadeSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 28) {
-
-                    // App icon + name
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(.clear)
-                                .frame(width: 88, height: 88)
-                                .background {
-                                    MeshGradientCard()
-                                        .clipShape(Circle())
-                                }
-                            Image(systemName: "pianokeys.rectangle.fill")
-                                .font(.system(size: 38))
-                                .foregroundColor(.white)
-                        }
-
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        KeyboardStripView(highlighted: [60, 64, 67])
+                            .frame(height: 34)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                         Text("Cascade")
-                            .font(.title).bold()
-
-                        Text("Your Piano Instructor")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .font(CascadeFont.display(40))
+                            .foregroundStyle(Brand.textPrimary)
+                        Text("Sheet music in. Falling notes out.")
+                            .font(.headline)
+                            .foregroundStyle(Brand.textSecondary)
                     }
                     .padding(.top, 8)
 
-                    // Mission
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label("Our Mission", systemImage: "heart.fill")
-                            .font(.headline)
-                            .foregroundColor(AppTheme.accent)
-
-                        Text("Piano lessons cost $50 to $100 an hour, putting real music education out of reach for most people. Cascade was built to change that.")
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Why this exists").eyebrowStyle()
+                        Text("Piano lessons cost $50 to $100 an hour. Cascade turns any sheet music into an interactive lesson you can slow down, loop, and play along with, for the price of a coffee or nothing at all.")
                             .font(.body)
-                            .foregroundColor(.primary)
-
-                        Text("Import any MusicXML file and it becomes an interactive falling-note lesson. Slow it down, loop a tricky section, or practice one hand at a time. Free, and no internet needed.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-
-                        Text("Beginner or returning player, Cascade meets you where you are.")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(18)
-                    .background(AppTheme.cardBackground)
-                    .cornerRadius(16)
-
-                    // Tutorial CTA
-                    VStack(spacing: 10) {
-                        Label("New to the Player?", systemImage: "graduationcap.fill")
-                            .font(.headline)
-
-                        Text("Take a quick interactive tour to see how falling notes, speed control, looping, and hand separation all work.")
+                            .foregroundStyle(Brand.textPrimary)
+                        Text("Everything except scanning works offline, and your music never leaves your device unless you scan it.")
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Brand.textSecondary)
+                    }
+                    .cascadeCard(padding: 18)
 
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("New to the player?").eyebrowStyle()
+                        Text("Take the 60-second tour: falling notes, speed, looping, and hand separation.")
+                            .font(.subheadline)
+                            .foregroundStyle(Brand.textSecondary)
                         Button {
                             triggerTutorial = true
                             isPresented = false
                         } label: {
-                            Label("Start Player Tour", systemImage: "play.circle.fill")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .background(AppTheme.accentGradient)
-                                .cornerRadius(14)
+                            Label("Start the tour", systemImage: "play.fill")
                         }
+                        .buttonStyle(.cascadePrimary)
                     }
-                    .padding(18)
-                    .background(AppTheme.cardBackground)
-                    .cornerRadius(16)
+                    .cascadeCard(padding: 18)
 
-                    // Footer
-                    Text("Made with ♪ for the Swift Student Challenge 2026")
+                    Text("Made with ♪ · Public-domain starter library · Fluid R3 piano")
                         .font(.caption)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
+                        .foregroundStyle(Brand.textTertiary)
+                        .frame(maxWidth: .infinity)
                         .padding(.bottom, 8)
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
+                .padding(.horizontal, 20)
             }
-            .navigationTitle("About Cascade")
+            .stageBackground()
+            .navigationTitle("About")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { isPresented = false }
-                        .fontWeight(.semibold)
+                    Button("Done") { isPresented = false }.fontWeight(.semibold)
                 }
             }
         }

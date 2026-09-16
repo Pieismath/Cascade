@@ -16,12 +16,7 @@ final class SampleScanFlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let skip = app.buttons["Skip"]
-        if skip.waitForExistence(timeout: 5) { skip.tap() }
-        let closeTutorial = app.buttons["Close tutorial"]
-        if closeTutorial.waitForExistence(timeout: 5) { closeTutorial.tap() }
-        let notNow = app.alerts.buttons["Not Now"]
-        if notNow.waitForExistence(timeout: 3) { notNow.tap() }
+        app.dismissFirstLaunchChrome()
 
         let addTab = app.tabBars.buttons["Add"]
         XCTAssertTrue(addTab.waitForExistence(timeout: 10))

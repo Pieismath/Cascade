@@ -6,6 +6,13 @@
 	     Keys that have no INFOPLIST_KEY_ build setting live here. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Cascade saves the falling-note videos you export to your photo library.</string>
 </dict>

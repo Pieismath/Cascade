@@ -64,9 +64,7 @@ struct ThemePickerView: View {
                     }
                     .tint(AppTheme.accent)
                 }
-                .padding()
-                .background(AppTheme.cardBackground)
-                .cornerRadius(14)
+                .cascadeCard(padding: 16, radius: 14)
 
                 // MARK: - Preview
                 VStack(alignment: .leading, spacing: 10) {
@@ -75,7 +73,7 @@ struct ThemePickerView: View {
 
                     themePreview
                         .frame(height: 160)
-                        .background(Color.black.opacity(0.05))
+                        .background(Brand.surface)
                         .cornerRadius(14)
                         .clipped()
                 }
@@ -167,9 +165,7 @@ struct ThemePickerView: View {
             }
             .padding(.vertical, 4)
         }
-        .padding()
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 16, radius: 14)
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 

@@ -117,6 +117,7 @@ struct SheetScanView: View {
                     )
                 }
             }
+            .stageBackground()
             .navigationTitle("Scan Sheet Music")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -197,9 +198,13 @@ struct SheetScanView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
 
-                Text("Photograph printed sheet music or import a PDF, and Cascade turns it into a falling-note lesson and video.")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Sheet music in").eyebrowStyle(Brand.teal)
+                    Text("Photograph a page or import a PDF. Cascade turns it into a falling-note lesson and a video.")
+                        .font(CascadeFont.display(22))
+                        .foregroundStyle(Brand.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 if activeSample != nil {
                     sampleLoadedNote
@@ -303,13 +308,9 @@ struct SheetScanView: View {
                         startRecognition()
                     } label: {
                         Label(activeSample == nil ? "Convert to Falling Notes" : "Convert Sample (free)", systemImage: "wand.and.stars")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(canRecognize ? AnyShapeStyle(AppTheme.accentGradient) : AnyShapeStyle(Color.gray))
-                            .cornerRadius(14)
                     }
+                    .buttonStyle(.cascadePrimary)
+                    .opacity(canRecognize ? 1 : 0.45)
                     .disabled(!canRecognize || pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan)
                 }
 
@@ -368,9 +369,7 @@ struct SheetScanView: View {
                 }
             }
         }
-        .padding(12)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(14)
+        .cascadeCard(padding: 12, radius: 14)
     }
 
     private var sampleLoadedNote: some View {
@@ -524,9 +523,7 @@ struct SheetScanView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .padding(14)
-            .background(AppTheme.cardBackground)
-            .cornerRadius(14)
+            .cascadeCard(padding: 14, radius: 14)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -771,9 +768,13 @@ private struct ScanPreviewView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Label("Transcription ready — check that it looks right", systemImage: "checkmark.seal.fill")
-                    .font(.headline)
-                    .foregroundColor(.green)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Transcription ready", systemImage: "checkmark.seal.fill")
+                        .eyebrowStyle(Brand.mint)
+                    Text("Check that it looks right")
+                        .font(CascadeFont.display(26))
+                        .foregroundStyle(Brand.textPrimary)
+                }
 
                 if isSample {
                     Text("Sample: this transcription was prepared in advance, so no scan credit was used. Your own pages go through live recognition.")
@@ -803,7 +804,7 @@ private struct ScanPreviewView: View {
                         .font(.headline)
                     notePreview
                         .frame(height: 110)
-                        .background(Color.black.opacity(0.85))
+                        .background(Brand.ink2)
                         .cornerRadius(12)
                 }
 
@@ -818,29 +819,22 @@ private struct ScanPreviewView: View {
                 // Actions
                 Button(action: onSave) {
                     Label("Add to Library & Play", systemImage: "play.fill")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(AppTheme.accentGradient)
-                        .cornerRadius(14)
                 }
+                .buttonStyle(.cascadePrimary)
 
                 Button(action: onExport) {
                     Label("Save & Export Video", systemImage: "film")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
                 }
-                .buttonStyle(.bordered)
-                .tint(AppTheme.accent)
+                .buttonStyle(.cascadeSecondary)
 
                 Button(action: onRetry) {
                     Label("Scan Again", systemImage: "arrow.counterclockwise")
                         .font(.subheadline)
+                        .foregroundStyle(Brand.textSecondary)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
+                .padding(.top, 4)
 
                 Text("Complex passages can lose detail in scanning — listen once before practicing, and rescan sharper photos if something sounds off.")
                     .font(.caption)
@@ -909,8 +903,7 @@ private struct ScanPreviewView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
-        .background(AppTheme.cardBackground)
-        .cornerRadius(10)
+        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
@@ -1032,6 +1025,8 @@ private struct ScanSettingsView: View {
                     Text("About")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .stageBackground()
             .navigationTitle("Scan Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
