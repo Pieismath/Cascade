@@ -2,7 +2,10 @@
 
 Everything code-side for 1.0 is done in this repo. The items below need
 your Apple / Cloudflare / GitHub accounts, so they are yours to click through.
-Estimated time: about an hour, plus App Review.
+Estimated time: about an hour of clicking, plus Apple Developer Program
+enrollment (step 3, one to two days) and App Review.
+
+Do these in order: 1 → 2 → 3 → 4 → 5 → 6.
 
 ## 1. Backend (5 minutes)
 
@@ -32,17 +35,28 @@ App Store Connect requires a public privacy-policy URL, and the app links to it.
    `Models/ScanCloud.swift` (currently `nil`, which hides the in-app link).
 3. Paste the same URL into App Store Connect → App Privacy.
 
-## 3. Xcode signing (5 minutes)
+## 3. Apple Developer Program + signing (enrollment: 1–2 days, then 5 minutes)
 
-1. Open `Cascade.xcodeproj`, select the **MyPianoInstructor** target →
-   Signing & Capabilities. Team `6N239V8VV5` is already set with automatic
-   signing.
-2. Confirm **Sign in with Apple** shows as a capability (the entitlement file
-   is wired; Xcode registers it on the App ID the first time you build with
-   automatic signing while online). If it shows a red error, click "+
-   Capability → Sign in with Apple" once.
-3. Set **Version** (1.0) and **Build** (bump for every upload). Both live in
-   the target's General tab.
+**Blocker found while archiving:** the team currently in the project
+(`6N239V8VV5`, "Jason Fang") is a *personal* team, i.e. a free Apple ID. Personal
+teams cannot publish to the App Store and cannot use Sign in with Apple, so the
+archive fails with:
+
+> Personal development teams, including "Jason Fang", do not support the Sign In with Apple capability.
+
+1. Enroll in the Apple Developer Program (developer.apple.com/programs, US$99/year).
+   Approval usually takes a day or two.
+2. Open `Cascade.xcodeproj` → **MyPianoInstructor** target → Signing &
+   Capabilities → switch **Team** to the new paid team (keep automatic signing).
+   Xcode will register the App ID `jhfang.MyPianoInstructor2` with the Sign in
+   with Apple capability on first build while online. If it shows a red error,
+   click "+ Capability → Sign in with Apple" once.
+3. Set **Version** (1.0) and **Build** (bump for every upload) in the General tab.
+
+Until enrollment completes you can still run Debug builds on your own device
+with the personal team **if** you temporarily remove the Sign in with Apple
+entitlement (Signing & Capabilities → delete the capability, don't commit that
+change). The scan flow then only works in the debug bring-your-own-key mode.
 
 ## 4. Test on a real device (15 minutes)
 
