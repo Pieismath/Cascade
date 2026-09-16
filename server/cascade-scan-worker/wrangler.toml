@@ -12,13 +12,25 @@ id = "35ee0915468e4f6c8af3e07a412dc57e"
 [vars]
 # The iOS app's bundle identifier — the audience of Apple identity tokens.
 APPLE_BUNDLE_ID = "jhfang.MyPianoInstructor2"
-# Lifetime free scans per Apple account.
-FREE_SCANS = "5"
+# Free scan credits per Apple account (a taster; paid packs cover the rest).
+FREE_SCANS = "1"
+# One credit covers up to this many pages; longer scans cost more credits.
+PAGES_PER_CREDIT = "4"
+# Hard caps on provider spend per credit (system crops / requests per job).
+MAX_IMAGES_PER_CREDIT = "24"
+MAX_REQUESTS_PER_CREDIT = "6"
+MAX_PAGES_PER_SCAN = "12"
+RATE_LIMIT_PER_MINUTE = "20"
+# App Store consumable product ids → credits granted. Must match App Store
+# Connect and the app's ScanStore.productIDs.
+PRODUCTS = '{"jhfang.MyPianoInstructor2.scans10": 10, "jhfang.MyPianoInstructor2.scans25": 25}'
 # Session token lifetime in days.
 SESSION_DAYS = "60"
 # Models (override without redeploying code)
 ANTHROPIC_MODEL = "claude-sonnet-5"
-ANTHROPIC_MODEL_HIGH = "claude-fable-5"
+# Retry tier for hard scans. Opus keeps worst-case cost inside pack margins;
+# Fable is better still but ~2× the price per retry.
+ANTHROPIC_MODEL_HIGH = "claude-opus-5"
 GEMINI_MODEL = "gemini-2.5-flash"
 
 # Secrets (set with `npx wrangler secret put <NAME>`):

@@ -40,7 +40,7 @@ TRACK YOUR PROGRESS
 • Achievements and shareable progress cards
 • Optional daily practice reminders
 
-Scanning uses a secure cloud service to read the notation. Sign in with Apple to get free scans; we never see your name or email. Everything else works fully offline.
+Scanning uses a secure cloud service to read the notation. Sign in with Apple and your first scan is free; scan packs are available as in-app purchases (10 or 25 scans, one scan covers up to 4 pages, credits never expire). We never see your name or email. Everything else works fully offline.
 
 ## Keywords (100 chars)
 
@@ -60,7 +60,9 @@ Cascade converts sheet music to interactive piano lessons and videos.
 
 TESTING WITHOUT SCANNING: the Add tab includes a free starter library (eight pieces) that works fully offline. Tap any of them, then use the Play tab. The export button (share icon) in the player renders a video.
 
-TESTING SCANNING: on the Add tab tap "Scan Sheet Music", sign in with Apple (no name or email requested), then import the attached sample PDF or photograph any printed piano score. Each Apple account receives 5 free scans. Recognition takes roughly 30 to 90 seconds and needs a network connection. The images are processed by our server and discarded.
+TESTING SCANNING: on the Add tab tap "Scan Sheet Music", sign in with Apple (no name or email requested), then import the attached sample PDF or photograph any printed piano score. Each Apple account receives 1 free scan; further scans are sold as consumable in-app purchases (10 Scans, 25 Scans). Recognition takes roughly 30 to 90 seconds and needs a network connection. The images are processed by our server and discarded.
+
+IN-APP PURCHASES: consumables are redeemed server-side after verifying Apple's signed transaction; the balance is shown on the scan screen and in scan settings, which also has Restore Purchases.
 
 ACCOUNT DELETION: Scan Sheet Music → gear icon → Delete Account.
 

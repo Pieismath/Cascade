@@ -1,0 +1,56 @@
+{
+  "identifier" : "B1F3C2A0-6C4E-4B7D-9E1A-2F5D8C7B6A10",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "6C1D2E3F-0001-4000-8000-000000000001",
+      "localizations" : [
+        {
+          "description" : "10 sheet-music scans (up to 4 pages each)",
+          "displayName" : "10 Scans",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "jhfang.MyPianoInstructor2.scans10",
+      "referenceName" : "10 Scans",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : false,
+      "internalID" : "6C1D2E3F-0001-4000-8000-000000000002",
+      "localizations" : [
+        {
+          "description" : "25 sheet-music scans (up to 4 pages each)",
+          "displayName" : "25 Scans",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "jhfang.MyPianoInstructor2.scans25",
+      "referenceName" : "25 Scans",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "6N239V8VV5",
+    "_failTransactionsEnabled" : false,
+    "_lastSynced" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

@@ -13,6 +13,7 @@ import VisionKit
 import PDFKit
 import UniformTypeIdentifiers
 import AuthenticationServices
+import StoreKit
 
 /// Bring-your-own-key scanning is a developer convenience. Release builds are
 /// cloud-only so no customer is ever asked for an API key.
@@ -55,7 +56,17 @@ struct SheetScanView: View {
     @State private var exportedVideoURL: URL? = nil
 
     @State private var settings = ScanSettings.shared
-    @State private var account = ScanAccountManager()
+    @State private var account: ScanAccountManager
+    @State private var store: ScanStore
+    @State private var infoMessage: String? = nil
+
+    init(selectedSong: Binding<Song?>, tabSelection: Binding<Int>) {
+        _selectedSong = selectedSong
+        _tabSelection = tabSelection
+        let account = ScanAccountManager()
+        _account = State(initialValue: account)
+        _store = State(initialValue: ScanStore(account: account))
+    }
 
     private var cameraAvailable: Bool {
         VNDocumentCameraViewController.isSupported
@@ -65,9 +76,18 @@ struct SheetScanView: View {
         ScanCloudConfig.baseURL != nil
     }
 
-    /// Cloud mode (signed in, scans left) or a developer key — either unlocks Convert.
+    /// Credits this scan will cost (1 per 4 pages by default).
+    private var creditsNeeded: Int {
+        account.creditsNeeded(forPages: max(1, pages.count))
+    }
+
+    private var hasEnoughCredits: Bool {
+        (account.remainingScans ?? 1) >= creditsNeeded
+    }
+
+    /// Cloud mode (signed in, enough credits) or a developer key — either unlocks Convert.
     private var canRecognize: Bool {
-        if cloudConfigured && account.isSignedIn && (account.remainingScans ?? 1) > 0 {
+        if cloudConfigured && account.isSignedIn && hasEnoughCredits {
             return true
         }
         return ownKeyAllowed && settings.hasAPIKey
@@ -125,7 +145,7 @@ struct SheetScanView: View {
             importFiles(result)
         }
         .sheet(isPresented: $showSettings) {
-            ScanSettingsView(account: account)
+            ScanSettingsView(account: account, store: store)
         }
         .sheet(isPresented: $showExportSheet) {
             ExportProgressSheet(progress: exporter.exportProgress)
@@ -142,6 +162,17 @@ struct SheetScanView: View {
         }
         .task {
             await account.refresh()
+            // Purchases whose redemption was interrupted are retried here.
+            let granted = await store.redeemPending()
+            if granted > 0 { infoMessage = "Added \(granted) scan\(granted == 1 ? "" : "s") from a previous purchase." }
+        }
+        .alert("Scans Added", isPresented: Binding(
+            get: { infoMessage != nil },
+            set: { if !$0 { infoMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { infoMessage = nil }
+        } message: {
+            Text(infoMessage ?? "")
         }
         .alert("Scanning Problem", isPresented: Binding(
             get: { errorMessage != nil },
@@ -166,8 +197,9 @@ struct SheetScanView: View {
                 if cloudConfigured {
                     if !account.isSignedIn {
                         signInCard
-                    } else if account.remainingScans == 0 {
-                        outOfScansCard
+                    } else if !hasEnoughCredits {
+                        ScanPacksCard(store: store, account: account, creditsNeeded: creditsNeeded,
+                                      onGranted: { infoMessage = $0 }, onError: { errorMessage = $0 })
                     } else {
                         scansRemainingPill
                     }
@@ -278,9 +310,9 @@ struct SheetScanView: View {
 
     private var signInCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Get \(account.freeScans ?? 5) free scans", systemImage: "sparkles")
+            Label(freeScanHeadline, systemImage: "sparkles")
                 .font(.subheadline).bold()
-            Text("Sign in and your free scans follow your account — no setup needed. We only receive an anonymous account ID, never your name or email.")
+            Text("Sign in to scan. Your first scan is on us; packs of scans are available after that. We only receive an anonymous account ID, never your name or email.")
                 .font(.caption)
                 .foregroundColor(.secondary)
             SignInWithAppleButton(.signIn) { request in
@@ -311,37 +343,26 @@ struct SheetScanView: View {
         .cornerRadius(12)
     }
 
+    private var freeScanHeadline: String {
+        let free = account.freeScans ?? 1
+        return free == 1 ? "Get a free scan" : "Get \(free) free scans"
+    }
+
     private var scansRemainingPill: some View {
-        HStack(spacing: 8) {
+        let remaining = account.remainingScans ?? 0
+        let costNote = pages.count > 4 ? " · this scan uses \(creditsNeeded)" : ""
+        return HStack(spacing: 8) {
             Image(systemName: "checkmark.seal.fill")
                 .foregroundColor(.green)
-            Text("Signed in — \(account.remainingScans.map(String.init) ?? "…") free scan\(account.remainingScans == 1 ? "" : "s") left")
+            Text("Signed in — \(remaining) scan\(remaining == 1 ? "" : "s") left\(costNote)")
                 .font(.caption).bold()
             Spacer()
+            Button("Get more") { showSettings = true }
+                .font(.caption).bold()
         }
         .padding(10)
         .background(Color.green.opacity(0.1))
         .cornerRadius(10)
-    }
-
-    private var outOfScansCard: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "hourglass")
-                .foregroundColor(.orange)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("You've used all your free scans")
-                    .font(.subheadline).bold()
-                Text(ownKeyAllowed
-                     ? "More scan options are coming soon. Developers can add an API key under scan settings → Advanced."
-                     : "More scan options are coming soon. You can still import MusicXML files and play the starter library.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(12)
     }
 
     private var unavailableCard: some View {
@@ -506,9 +527,13 @@ struct SheetScanView: View {
 
     private func startRecognition() {
         guard let recognizer = makeRecognizer(quality: "standard") else {
-            errorMessage = cloudConfigured
-                ? "Sign in to scan."
-                : SheetMusicRecognitionError.missingAPIKey.localizedDescription
+            if cloudConfigured && account.isSignedIn && !hasEnoughCredits {
+                errorMessage = "This scan needs \(creditsNeeded) scan credit\(creditsNeeded == 1 ? "" : "s"). Get a scan pack to continue."
+            } else {
+                errorMessage = cloudConfigured
+                    ? "Sign in to scan."
+                    : SheetMusicRecognitionError.missingAPIKey.localizedDescription
+            }
             return
         }
 
@@ -521,12 +546,14 @@ struct SheetScanView: View {
             Task { @MainActor in progressText = text }
         }
 
+        let jobID = UUID().uuidString.lowercased()
         recognitionTask = Task {
             do {
                 var score: RecognizedScore
                 do {
                     // Pass 1: system crops, a few per request.
-                    let job = ScoreTranscriptionJob(recognizer: recognizer, pages: snapshot, strategy: .systems(perBatch: 4))
+                    var job = ScoreTranscriptionJob(recognizer: recognizer, pages: snapshot, strategy: .systems(perBatch: 4))
+                    job.jobID = jobID
                     score = try await job.run(progress: report)
 
                     // Rhythm badly off → one whole-page pass on the stronger
@@ -534,7 +561,8 @@ struct SheetScanView: View {
                     if usingCloud, score.measureReport.suspectFraction > 0.25,
                        let retry = makeRecognizer(quality: "high") {
                         progressText = "Double-checking tricky passages…"
-                        let second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
+                        var second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
+                        second.jobID = job.jobID   // same scan, same single credit
                         if let better = try? await second.run(progress: report),
                            better.measureReport.suspectFraction < score.measureReport.suspectFraction {
                             score = better
@@ -545,7 +573,8 @@ struct SheetScanView: View {
                     // stronger model when the cloud offers one.
                     let retry = (usingCloud ? makeRecognizer(quality: "high") : nil) ?? recognizer
                     progressText = "Trying again with full pages…"
-                    let second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
+                    var second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
+                    second.jobID = jobID
                     score = try await second.run(progress: report)
                 }
 
@@ -777,7 +806,9 @@ private extension SheetMusicRecognitionError {
 private struct ScanSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     let account: ScanAccountManager
+    let store: ScanStore
     @State private var settings = ScanSettings.shared
+    @State private var restoreMessage: String? = nil
     @State private var keyInput: String = ScanSettings.shared.apiKey
     @State private var confirmDelete = false
     @State private var deleting = false
@@ -789,8 +820,11 @@ private struct ScanSettingsView: View {
                 if ScanCloudConfig.baseURL != nil {
                     Section {
                         if account.isSignedIn {
-                            LabeledContent("Free scans left") {
+                            LabeledContent("Scans left") {
                                 Text(account.remainingScans.map(String.init) ?? "—")
+                            }
+                            if let credits = account.credits, credits > 0 {
+                                LabeledContent("Purchased credits", value: "\(credits)")
                             }
                             Button("Sign Out") {
                                 account.signOut()
@@ -807,7 +841,24 @@ private struct ScanSettingsView: View {
                     } header: {
                         Text("Account")
                     } footer: {
-                        Text("Your account holds only an anonymous Apple sign-in ID and how many free scans you've used. Deleting it removes that record from our servers.")
+                        Text("Your account holds only an anonymous Apple sign-in ID, your scan usage, and any purchased credits. Deleting it removes that record from our servers; unused credits are forfeited.")
+                    }
+
+                    Section {
+                        ScanPacksList(store: store, account: account,
+                                      onGranted: { restoreMessage = $0 }, onError: { restoreMessage = $0 })
+                        Button("Restore Purchases") {
+                            Task {
+                                let granted = await store.redeemPending()
+                                restoreMessage = granted > 0
+                                    ? "Added \(granted) scan\(granted == 1 ? "" : "s")."
+                                    : "No unredeemed purchases were found. Your balance is up to date."
+                            }
+                        }
+                    } header: {
+                        Text("Scan Packs")
+                    } footer: {
+                        Text("One credit covers a scan of up to \(account.pagesPerCredit) pages. Longer pieces use one credit per \(account.pagesPerCredit) pages.")
                     }
                 }
 
@@ -878,6 +929,14 @@ private struct ScanSettingsView: View {
             } message: {
                 Text("This removes your scan record from our servers and signs you out. Songs already in your library stay on this device.")
             }
+            .alert("Purchases", isPresented: Binding(
+                get: { restoreMessage != nil },
+                set: { if !$0 { restoreMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { restoreMessage = nil }
+            } message: {
+                Text(restoreMessage ?? "")
+            }
             .alert("Couldn't Delete Account", isPresented: Binding(
                 get: { deleteError != nil },
                 set: { if !$0 { deleteError = nil } }
@@ -942,6 +1001,110 @@ private struct DocumentCameraView: UIViewControllerRepresentable {
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
             print("Document camera failed:", error)
             dismiss()
+        }
+    }
+}
+
+
+// MARK: - Scan packs (StoreKit 2)
+
+/// Card shown on the scan screen when the account can't cover the next scan.
+private struct ScanPacksCard: View {
+    let store: ScanStore
+    let account: ScanAccountManager
+    let creditsNeeded: Int
+    let onGranted: (String) -> Void
+    let onError: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(headline, systemImage: "sparkles")
+                .font(.subheadline).bold()
+            Text("One credit covers a scan of up to \(account.pagesPerCredit) pages. Packs never expire.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            ScanPacksList(store: store, account: account, onGranted: onGranted, onError: onError)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.accent.opacity(0.08))
+        .cornerRadius(12)
+        .task { await store.loadProducts() }
+    }
+
+    private var headline: String {
+        let remaining = account.remainingScans ?? 0
+        if remaining == 0 { return "You're out of scans" }
+        return "This scan needs \(creditsNeeded) credits — you have \(remaining)"
+    }
+}
+
+/// Product rows with Buy buttons, shared by the scan card and settings.
+private struct ScanPacksList: View {
+    let store: ScanStore
+    let account: ScanAccountManager
+    let onGranted: (String) -> Void
+    let onError: (String) -> Void
+
+    var body: some View {
+        Group {
+            if store.products.isEmpty {
+                if store.isLoadingProducts {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    Text(store.loadError ?? "Scan packs aren't available right now.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            } else {
+                ForEach(store.products, id: \.id) { product in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(product.displayName).font(.subheadline).bold()
+                            Text(perScanLabel(product)).font(.caption).foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            buy(product)
+                        } label: {
+                            Text(product.displayPrice)
+                                .font(.subheadline).bold()
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.accent)
+                        .disabled(store.isPurchasing)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .task { await store.loadProducts() }
+    }
+
+    private func perScanLabel(_ product: Product) -> String {
+        let credits = ScanStore.credits(for: product)
+        guard credits > 0 else { return product.description }
+        let each = (product.price / Decimal(credits))
+        let formatted = each.formatted(product.priceFormatStyle)
+        return "\(credits) scans · \(formatted) each"
+    }
+
+    private func buy(_ product: Product) {
+        Task {
+            do {
+                switch try await store.purchase(product) {
+                case .granted(let n):
+                    onGranted("Added \(n) scan\(n == 1 ? "" : "s") to your account.")
+                case .pending:
+                    onGranted("Your purchase is waiting for approval. Scans will be added once it's approved.")
+                case .cancelled:
+                    break
+                }
+            } catch {
+                onError(error.localizedDescription)
+            }
         }
     }
 }

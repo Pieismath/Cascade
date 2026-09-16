@@ -467,7 +467,9 @@ nonisolated struct ScoreTranscriptionJob {
     let recognizer: SheetMusicRecognizer
     let pages: [UIImage]
     var strategy: Strategy = .systems(perBatch: 4)
-    let jobID = UUID().uuidString.lowercased()
+    /// Shared by every request of one scan (and by its retry passes) so the
+    /// worker charges a single credit for the whole thing.
+    var jobID: String = UUID().uuidString.lowercased()
 
     /// Human-readable progress ("Reading part 2 of 5…").
     typealias Progress = @Sendable (String) -> Void
@@ -511,7 +513,7 @@ nonisolated struct ScoreTranscriptionJob {
                 batchIndex: index, batchCount: batches.count,
                 isSystemCrops: isSystemCrops, attributes: attributes, nextMeasure: measuresSoFar + 1
             )
-            let xml = try await recognizer.recognize(pages: batch, context: context, jobID: batches.count > 1 ? jobID : nil)
+            let xml = try await recognizer.recognize(pages: batch, pageCount: pages.count, context: context, jobID: jobID)
             try Task.checkCancellation()
 
             let batchAttributes = MusicXMLStitcher.attributes(of: xml)

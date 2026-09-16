@@ -30,6 +30,9 @@ enum ScanCloudError: LocalizedError {
     case appleSignInFailed
     case sessionExpired
     case outOfScans
+    case insufficientCredits(needed: Int, remaining: Int, message: String)
+    case rateLimited
+    case invalidPurchase(String)
     case network(String)
     case server(String)
 
@@ -42,7 +45,13 @@ enum ScanCloudError: LocalizedError {
         case .sessionExpired:
             return "Your session expired. Please sign in again."
         case .outOfScans:
-            return "You've used all your free scans."
+            return "You're out of scans."
+        case .insufficientCredits(_, _, let message):
+            return message
+        case .rateLimited:
+            return "Too many scan requests. Please wait a minute and try again."
+        case .invalidPurchase(let message):
+            return message
         case .network(let detail):
             return "Network error: \(detail)"
         case .server(let message):
@@ -55,6 +64,15 @@ enum ScanCloudError: LocalizedError {
 
 /// Owns the Cascade Cloud session: exchanges the Apple identity token for a
 /// long-lived session token (Keychain), and tracks remaining free scans.
+/// The worker's balance envelope, returned by every account endpoint.
+nonisolated struct ScanBalance: Decodable, Sendable {
+    let remainingScans: Int
+    let freeScans: Int
+    let freeRemaining: Int?
+    let credits: Int?
+    let pagesPerCredit: Int?
+}
+
 @MainActor
 @Observable
 final class ScanAccountManager {
@@ -62,6 +80,22 @@ final class ScanAccountManager {
     private(set) var isSignedIn: Bool
     private(set) var remainingScans: Int?
     private(set) var freeScans: Int?
+    private(set) var freeRemaining: Int?
+    private(set) var credits: Int?
+    private(set) var pagesPerCredit: Int = 4
+
+    /// Credits a scan of `pageCount` pages will cost.
+    func creditsNeeded(forPages pageCount: Int) -> Int {
+        max(1, Int((Double(max(1, pageCount)) / Double(max(1, pagesPerCredit))).rounded(.up)))
+    }
+
+    func apply(_ balance: ScanBalance) {
+        remainingScans = balance.remainingScans
+        freeScans = balance.freeScans
+        freeRemaining = balance.freeRemaining
+        credits = balance.credits
+        if let p = balance.pagesPerCredit, p > 0 { pagesPerCredit = p }
+    }
 
     private static let sessionAccount = "cloud-session-token"
 
@@ -85,6 +119,9 @@ final class ScanAccountManager {
             let sessionToken: String
             let remainingScans: Int
             let freeScans: Int
+            let freeRemaining: Int?
+            let credits: Int?
+            let pagesPerCredit: Int?
         }
 
         var request = URLRequest(url: baseURL.appending(path: "v1/auth/apple"))
@@ -95,26 +132,21 @@ final class ScanAccountManager {
         let response: AuthResponse = try await ScanCloudAPI.send(request)
         KeychainStore.set(response.sessionToken, forKey: Self.sessionAccount)
         isSignedIn = true
-        remainingScans = response.remainingScans
-        freeScans = response.freeScans
+        apply(ScanBalance(remainingScans: response.remainingScans, freeScans: response.freeScans,
+                          freeRemaining: response.freeRemaining, credits: response.credits,
+                          pagesPerCredit: response.pagesPerCredit))
     }
 
     /// Refreshes the remaining-scan count; silently signs out on a dead session.
     func refresh() async {
         guard let baseURL = ScanCloudConfig.baseURL, let token = sessionToken else { return }
 
-        struct MeResponse: Decodable {
-            let remainingScans: Int
-            let freeScans: Int
-        }
-
         var request = URLRequest(url: baseURL.appending(path: "v1/me"))
         request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
 
         do {
-            let me: MeResponse = try await ScanCloudAPI.send(request)
-            remainingScans = me.remainingScans
-            freeScans = me.freeScans
+            let me: ScanBalance = try await ScanCloudAPI.send(request)
+            apply(me)
         } catch ScanCloudError.sessionExpired {
             signOut()
         } catch {
@@ -127,6 +159,37 @@ final class ScanAccountManager {
         isSignedIn = false
         remainingScans = nil
         freeScans = nil
+        freeRemaining = nil
+        credits = nil
+    }
+
+    struct RedeemResult: Decodable {
+        let added: Int
+        let alreadyRedeemed: Bool
+        let remainingScans: Int
+        let freeScans: Int
+        let freeRemaining: Int?
+        let credits: Int?
+        let pagesPerCredit: Int?
+    }
+
+    /// Sends a StoreKit 2 signed transaction to the worker, which verifies
+    /// Apple's signature and grants the pack's credits (once per transaction).
+    func redeem(signedTransaction: String) async throws -> RedeemResult {
+        guard let baseURL = ScanCloudConfig.baseURL else { throw ScanCloudError.notConfigured }
+        guard let token = sessionToken else { throw ScanCloudError.sessionExpired }
+
+        var request = URLRequest(url: baseURL.appending(path: "v1/purchases/redeem"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
+        request.httpBody = try JSONEncoder().encode(["signedTransaction": signedTransaction])
+
+        let result: RedeemResult = try await ScanCloudAPI.send(request)
+        apply(ScanBalance(remainingScans: result.remainingScans, freeScans: result.freeScans,
+                          freeRemaining: result.freeRemaining, credits: result.credits,
+                          pagesPerCredit: result.pagesPerCredit))
+        return result
     }
 
     /// Deletes the server-side account record (scan usage) and signs out.
@@ -165,12 +228,11 @@ struct CascadeCloudRecognizer: SheetMusicRecognizer {
     /// pass produces MusicXML that fails the app's own parser validation.
     var quality: String = "standard"
 
-    nonisolated func recognize(pages: [Data], context: String?, jobID: String?) async throws -> String {
+    nonisolated func recognize(pages: [Data], pageCount: Int, context: String?, jobID: String?) async throws -> String {
         struct RecognizeResponse: Decodable {
             let musicXML: String
             let provider: String
             let cached: Bool
-            let remainingScans: Int
         }
 
         var request = URLRequest(url: baseURL.appending(path: "v1/recognize"))
@@ -181,6 +243,7 @@ struct CascadeCloudRecognizer: SheetMusicRecognizer {
 
         var body: [String: Any] = [
             "pages": pages.map { $0.base64EncodedString() },
+            "pageCount": max(1, pageCount),
             "quality": quality
         ]
         if let context, !context.isEmpty { body["context"] = context }
@@ -200,6 +263,8 @@ enum ScanCloudAPI {
         nonisolated struct Payload: Decodable {
             let code: String
             let message: String
+            let needed: Int?
+            let remaining: Int?
         }
         let error: Payload
     }
@@ -234,7 +299,15 @@ enum ScanCloudAPI {
         case 401:
             throw ScanCloudError.sessionExpired
         case 402:
+            if let payload = envelope?.error, payload.code == "insufficient_credits" {
+                throw ScanCloudError.insufficientCredits(
+                    needed: payload.needed ?? 1, remaining: payload.remaining ?? 0, message: payload.message)
+            }
             throw ScanCloudError.outOfScans
+        case 429:
+            throw ScanCloudError.rateLimited
+        case 400 where envelope?.error.code == "invalid_purchase" || envelope?.error.code == "unknown_product":
+            throw ScanCloudError.invalidPurchase(message)
         case 503:
             throw ScanCloudError.server("Scanning is temporarily unavailable. Please try again later.")
         case 422:

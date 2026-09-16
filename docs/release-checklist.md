@@ -69,9 +69,26 @@ The simulator can't do camera capture or Sign in with Apple properly.
   sync.
 - Delete Account from scan settings, then sign in again.
 
-## 5. App Store Connect (20 minutes)
+## 5. App Store Connect (30 minutes)
 
 - Create the app record with bundle id `jhfang.MyPianoInstructor2`.
+- **Sign the Paid Apps agreement** (Agreements, Tax, and Banking) — required before
+  in-app purchases can be tested or sold. Add banking and tax info.
+- **Create the two consumable in-app purchases** (App → Monetization → In-App
+  Purchases → + → Consumable). The product ids must match exactly:
+
+  | Reference name | Product ID | Price tier | Display name |
+  |---|---|---|---|
+  | 10 Scans | `jhfang.MyPianoInstructor2.scans10` | $4.99 | 10 Scans |
+  | 25 Scans | `jhfang.MyPianoInstructor2.scans25` | $9.99 | 25 Scans |
+
+  Description for both: "Scan credits for turning sheet music into falling-note
+  lessons. One credit covers a scan of up to 4 pages. Credits never expire."
+  Add a 1024×1024 review screenshot of the scan screen for each. Submit the
+  products **with** the first app version (select them on the version page under
+  In-App Purchases), otherwise the packs show "not available" in review.
+- Optional: enroll in the App Store Small Business Program (15% commission
+  instead of 30%) at developer.apple.com — the margin numbers below assume it.
 - Copy in `docs/app-store-listing.md` (name, subtitle, description,
   keywords, review notes).
 - Screenshots: 6.9" iPhone and 13" iPad are required. Use the simulator
@@ -102,10 +119,32 @@ needs network; Sign in with Apple grants 5 free scans; provide the reviewer
 with a sample PDF (the bundled starter songs are also available offline so
 the app is fully testable without scanning).
 
+## Money model (how you break even)
+
+- Every Apple ID gets **1 free scan credit** (`FREE_SCANS` in `wrangler.toml`).
+- A scan costs **1 credit per 4 pages** (`PAGES_PER_CREDIT`). A 5-page piece is 2 credits.
+- Per credit the worker allows at most 24 images / 6 model requests
+  (`MAX_IMAGES_PER_CREDIT`, `MAX_REQUESTS_PER_CREDIT`), which bounds worst-case
+  provider spend per credit to roughly $0.40 on Sonnet 5 with the Opus retry,
+  and typically $0.15–0.25.
+- Packs: 10 for $4.99 (≈ $0.42 net per credit after Apple's 15%), 25 for $9.99
+  (≈ $0.34 net). Both clear typical cost; the 10-pack clears worst case.
+- Credits are granted **only** after the worker verifies Apple's signature on the
+  transaction (`src/appstore.js`), once per transaction id. A modified app cannot
+  mint credits; a hacked session can only spend what that account has.
+- 20 requests per minute per account, 12 pages per scan, identical scans cached.
+- Backstop: set a monthly spend limit in the Anthropic console.
+
+Testing purchases before enrollment: the scheme points at `Cascade.storekit`, so
+running from Xcode shows the packs and completes local purchases. Those local
+transactions are signed by Xcode, not Apple, so the worker (correctly) rejects
+them — expect "This purchase could not be verified" in that mode. Real
+verification works in TestFlight / sandbox once the products exist in App Store
+Connect.
+
 ## What is intentionally not in 1.0
 
-- **Paid scan packs (IAP).** The worker meters free scans per account; selling
-  more needs StoreKit 2 products plus server receipt verification and moving
-  quota from KV to D1. Ship 1.0 free, add packs in 1.1 once you see demand.
-- **App Attest.** Abuse hardening for the free tier; the session-token seam
+- **App Attest.** Extra abuse hardening for the free tier; the session-token seam
   in the worker is where it goes.
+- **D1 instead of KV.** KV is eventually consistent; two devices racing could get
+  one extra free request. Bounded by the per-job caps, so acceptable at launch.

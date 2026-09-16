@@ -51,12 +51,13 @@ protocol SheetMusicRecognizer {
     /// `context` carries continuation guidance for multi-request jobs and
     /// `jobID` groups those requests for quota purposes (cloud only).
     /// Nonisolated so encoding and network work stay off the main actor.
-    nonisolated func recognize(pages: [Data], context: String?, jobID: String?) async throws -> String
+    /// `pageCount` is the number of source pages in the whole scan (credit cost).
+    nonisolated func recognize(pages: [Data], pageCount: Int, context: String?, jobID: String?) async throws -> String
 }
 
 extension SheetMusicRecognizer {
     nonisolated func recognize(pages: [Data]) async throws -> String {
-        try await recognize(pages: pages, context: nil, jobID: nil)
+        try await recognize(pages: pages, pageCount: pages.count, context: nil, jobID: nil)
     }
 }
 
@@ -126,7 +127,7 @@ struct ClaudeSheetMusicRecognizer: SheetMusicRecognizer {
     /// is a sanity limit on scan size rather than a per-request ceiling.
     static let maxPagesPerScan = 12
 
-    nonisolated func recognize(pages: [Data], context: String?, jobID: String?) async throws -> String {
+    nonisolated func recognize(pages: [Data], pageCount: Int, context: String?, jobID: String?) async throws -> String {
         guard !apiKey.isEmpty else { throw SheetMusicRecognitionError.missingAPIKey }
         guard !pages.isEmpty else {
             throw SheetMusicRecognitionError.unreadableScore("No pages to recognize.")

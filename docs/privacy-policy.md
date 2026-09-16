@@ -40,9 +40,13 @@ To meter free scans, the app asks you to sign in with Apple. We request no name 
 
 That is the entire account.
 
+### Scan packs (in-app purchases)
+
+Additional scans are sold as consumable in-app purchases through Apple. Apple handles payment; we never see your payment details. To add the credits to your account, the app sends us Apple's signed record of the purchase, and we store the transaction identifier, the product purchased, and the credit balance alongside your anonymous account. This is used only to grant credits once and to prevent the same purchase being redeemed twice.
+
 ### Deleting your account
 
-Open **Scan Sheet Music → gear icon → Delete Account**. This removes your usage record from our servers immediately and signs you out. Songs in your library remain on your device.
+Open **Scan Sheet Music → gear icon → Delete Account**. This removes your usage record and credit balance from our servers immediately and signs you out. Unused purchased credits are forfeited. Songs in your library remain on your device.
 
 ## Permissions the app asks for
 

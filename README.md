@@ -52,12 +52,20 @@ pages ─▶ SheetSystemSplitter ─▶ system crops, batched ─▶ cascade-sca
 5. **Validate + preview.** The app's own parser must produce real notes, then the user sees
    note count, duration, suspicious measures, a piano-roll preview, and can save or export.
 
-### Backend
+### Backend and money model
 
 `server/cascade-scan-worker` is a Cloudflare Worker (plain JS, offline tests in
-`test/run.js`). It verifies Sign in with Apple, mints session tokens, meters free
-scans per account in KV, caches identical scans, routes to Anthropic with Gemini
-fallback (or Gemini-only for a $0 setup), and supports account deletion.
+`test/run.js`). It verifies Sign in with Apple, mints session tokens, holds each
+account's credit balance in KV, caches identical scans, routes to Anthropic with
+Gemini fallback (or Gemini-only for a $0 setup), rate-limits, and supports
+account deletion.
+
+Credits: 1 free per Apple ID, then consumable packs bought with StoreKit 2
+(`Models/ScanStore.swift`). A scan costs 1 credit per 4 pages and is capped in
+model requests per credit, so provider spend per credit is bounded. Credits are
+granted only after the worker verifies Apple's signature on the transaction
+(`src/appstore.js`, X.509 chain to Apple Root CA G3, no libraries), once per
+transaction id. `Cascade.storekit` lets you exercise the purchase UI locally.
 
 Deployed at `https://cascade-scan.jaydfds.workers.dev`; the app points at it via
 `ScanCloudConfig.baseURL`. See [docs/release-checklist.md](docs/release-checklist.md)

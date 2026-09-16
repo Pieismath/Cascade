@@ -46,17 +46,22 @@ edit and redeploy.
 | POST   | /v1/auth/apple  | Apple id token | Verify Apple sign-in, mint session token |
 | GET    | /v1/me          | session bearer | Remaining scans |
 | DELETE | /v1/account     | session bearer | Delete the usage record (App Store 5.1.1 account deletion) |
+| POST   | /v1/purchases/redeem | session bearer | `{signedTransaction}` (StoreKit 2 JWS) → verify with Apple's chain, grant credits once |
 | POST   | /v1/recognize   | session bearer | Images (base64 JPEG) → MusicXML |
 
-`/v1/recognize` body: `{pages: [b64...], quality?: "standard"|"high", context?: string, jobId?: string}`.
+`/v1/recognize` body: `{pages: [b64...], pageCount?: n, quality?: "standard"|"high", context?: string, jobId?: string}`.
+Cost is `ceil(pageCount / PAGES_PER_CREDIT)` credits per job; free credits (`FREE_SCANS`) are
+spent before purchased ones. Every balance response carries `remainingScans`, `freeRemaining`,
+`credits`, `pagesPerCredit`.
 The app splits long scores into several requests (system crops in batches) that share a
 `jobId`; only the first request of a job consumes a free scan. `context` is appended to the
 prompt so continuation batches know the divisions/key/time/tempo and measure number to
 continue from.
 
 Error responses are `{error: {code, message}}`; the app maps `401` (re-sign-in),
-`402 out_of_scans`, `413`, `422 unreadable/too_long`, `502`, and `503 scan_unavailable`
-(deployed without any provider key).
+`402 insufficient_credits` (+`needed`/`remaining`), `413 job_too_large/too_many_pages`,
+`422 unreadable/too_long`, `429 rate_limited`, `400 invalid_purchase/unknown_product`,
+`502`, and `503 scan_unavailable` (deployed without any provider key).
 
 ## Notes & hardening roadmap
 

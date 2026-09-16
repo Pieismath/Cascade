@@ -259,6 +259,11 @@ await test("truncated output surfaces as truncated error", async () => {
 // MARK: worker handlers (in-memory KV, real session tokens)
 
 import worker from "../src/index.js";
+import { verifySignedTransaction, PurchaseError, encodeOID, containsOID } from "../src/appstore.js";
+import { execSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function memoryKV() {
   const store = new Map();
@@ -274,7 +279,10 @@ function handlerEnv(overrides = {}) {
   return {
     SESSION_SECRET: "handler-secret",
     APPLE_BUNDLE_ID: BUNDLE,
-    FREE_SCANS: "2",
+    FREE_SCANS: "1",
+    PAGES_PER_CREDIT: "4",
+    MAX_IMAGES_PER_CREDIT: "24",
+    MAX_REQUESTS_PER_CREDIT: "6",
     SESSION_DAYS: "60",
     SCAN_KV: memoryKV(),
     ...overrides,
@@ -311,9 +319,13 @@ function sseBody(events) {
   return events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
 }
 
+async function sessionFor(env, sub) {
+  return issueSessionToken(sub, env.SESSION_SECRET, 60);
+}
+
 await test("DELETE /v1/account removes the usage record", async () => {
   const env = withProviderStub(handlerEnv());
-  const token = await issueSessionToken("del-user", env.SESSION_SECRET, 60);
+  const token = await sessionFor(env, "del-user");
   await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
   assert.equal(JSON.parse(env.SCAN_KV.store.get("u:del-user")).used, 1);
 
@@ -331,45 +343,226 @@ await test("DELETE /v1/account requires a session", async () => {
 
 await test("recognize without any provider key reports 503 scan_unavailable", async () => {
   const env = handlerEnv();
-  const token = await issueSessionToken("u", env.SESSION_SECRET, 60);
+  const token = await sessionFor(env, "u");
   const res = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
   assert.equal(res.status, 503);
   assert.equal(res.json.error.code, "scan_unavailable");
 });
 
-await test("segmented job charges a single scan across requests", async () => {
+await test("free scan is consumed, then the account is out of scans", async () => {
   const env = withProviderStub(handlerEnv());
-  const token = await issueSessionToken("job-user", env.SESSION_SECRET, 60);
+  const token = await sessionFor(env, "free-user");
+  const first = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "A"] } });
+  assert.equal(first.status, 200);
+  assert.equal(first.json.remainingScans, 0);
+  assert.equal(first.json.freeRemaining, 0);
+  const second = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "B"] } });
+  assert.equal(second.status, 402);
+  assert.equal(second.json.error.code, "insufficient_credits");
+});
+
+await test("segmented job charges a single credit across requests", async () => {
+  const env = withProviderStub(handlerEnv());
+  const token = await sessionFor(env, "job-user");
   const jobId = "job-abc-123";
-  const first = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "A"], jobId } });
-  const second = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "B"], jobId, context: "part 2" } });
-  const third = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "C"], jobId } });
+  const first = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "A"], jobId, pageCount: 2 } });
+  const second = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "B"], jobId, pageCount: 2, context: "part 2" } });
+  const third = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "C"], jobId, pageCount: 2 } });
   assert.equal(first.status, 200);
   assert.equal(second.status, 200);
   assert.equal(third.status, 200);
-  assert.equal(third.json.remainingScans, 1);
+  assert.equal(third.json.remainingScans, 0);
   assert.equal(JSON.parse(env.SCAN_KV.store.get("u:job-user")).used, 1);
 });
 
-await test("segmented job keeps working after quota is exhausted mid-job", async () => {
-  const env = withProviderStub(handlerEnv({ FREE_SCANS: "1" }));
-  const token = await issueSessionToken("last-scan", env.SESSION_SECRET, 60);
-  const jobId = "job-last";
-  const first = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "1"], jobId } });
-  assert.equal(first.json.remainingScans, 0);
-  const second = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "2"], jobId } });
-  assert.equal(second.status, 200, "later segments of an already-charged job must not be refused");
-  const fresh = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "3"], jobId: "job-new" } });
-  assert.equal(fresh.status, 402);
+await test("long scans cost more credits and are refused without them", async () => {
+  const env = withProviderStub(handlerEnv());
+  const token = await sessionFor(env, "long-user");
+  const res = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE], jobId: "long-1", pageCount: 6 } });
+  assert.equal(res.status, 402);
+  assert.equal(res.json.error.needed, 2);
+  assert.equal(res.json.error.remaining, 1);
+});
+
+await test("a job cannot exceed its per-credit request cap", async () => {
+  const env = withProviderStub(handlerEnv({ MAX_REQUESTS_PER_CREDIT: "2" }));
+  const token = await sessionFor(env, "cap-user");
+  const jobId = "cap-job";
+  assert.equal((await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "1"], jobId } })).status, 200);
+  assert.equal((await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "2"], jobId } })).status, 200);
+  const third = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "3"], jobId } });
+  assert.equal(third.status, 413);
+  assert.equal(third.json.error.code, "job_too_large");
+});
+
+await test("cache hits cost nothing", async () => {
+  const env = withProviderStub(handlerEnv());
+  const token = await sessionFor(env, "cache-user");
+  const a = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
+  assert.equal(a.json.remainingScans, 0);
+  const b = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
+  assert.equal(b.status, 200);
+  assert.equal(b.json.cached, true);
 });
 
 await test("context changes the cache key", async () => {
-  const env = withProviderStub(handlerEnv());
-  const token = await issueSessionToken("ctx-user", env.SESSION_SECRET, 60);
+  const env = withProviderStub(handlerEnv({ FREE_SCANS: "5" }));
+  const token = await sessionFor(env, "ctx-user");
   const a = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE], context: "x" } });
   const b = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE], context: "y" } });
   assert.equal(a.json.cached, false);
   assert.equal(b.json.cached, false);
+});
+
+await test("rate limit trips after the configured burst", async () => {
+  const env = withProviderStub(handlerEnv({ FREE_SCANS: "50", RATE_LIMIT_PER_MINUTE: "3" }));
+  const token = await sessionFor(env, "burst-user");
+  for (let i = 0; i < 3; i++) {
+    assert.equal((await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + i] } })).status, 200);
+  }
+  const res = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "x"] } });
+  assert.equal(res.status, 429);
+});
+
+// MARK: App Store purchases (chain generated with openssl, signed like StoreKit 2)
+
+function pemToDER(pem) {
+  const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  return new Uint8Array(Buffer.from(b64, "base64"));
+}
+
+/** Builds root → intermediate → leaf, mimicking Apple's chain shape and marker OIDs. */
+function makeChain({ withMarkers = true } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "cascade-chain-"));
+  const run = (cmd) => execSync(cmd, { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
+  writeFileSync(join(dir, "int.ext"), `basicConstraints=critical,CA:TRUE\n${withMarkers ? "1.2.840.113635.100.6.2.1=ASN1:NULL\n" : ""}`);
+  writeFileSync(join(dir, "leaf.ext"), `basicConstraints=CA:FALSE\n${withMarkers ? "1.2.840.113635.100.6.11.1=ASN1:NULL\n" : ""}`);
+  run(`openssl ecparam -name secp384r1 -genkey -noout -out root.key`);
+  run(`openssl req -x509 -new -key root.key -sha384 -days 30 -subj "/CN=Test Apple Root CA" -out root.pem`);
+  run(`openssl ecparam -name secp384r1 -genkey -noout -out int.key`);
+  run(`openssl req -new -key int.key -subj "/CN=Test WWDR G6" -out int.csr`);
+  run(`openssl x509 -req -in int.csr -CA root.pem -CAkey root.key -CAcreateserial -sha384 -days 30 -extfile int.ext -out int.pem`);
+  run(`openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out leaf.key`);
+  run(`openssl req -new -key leaf.key -subj "/CN=Test Receipt Signing" -out leaf.csr`);
+  run(`openssl x509 -req -in leaf.csr -CA int.pem -CAkey int.key -CAcreateserial -sha256 -days 30 -extfile leaf.ext -out leaf.pem`);
+  return {
+    root: pemToDER(readFileSync(join(dir, "root.pem"), "utf8")),
+    intermediate: pemToDER(readFileSync(join(dir, "int.pem"), "utf8")),
+    leaf: pemToDER(readFileSync(join(dir, "leaf.pem"), "utf8")),
+    leafKeyPEM: readFileSync(join(dir, "leaf.key"), "utf8"),
+  };
+}
+
+async function signTransaction(chain, payload, { includeRoot = true } = {}) {
+  const key = await crypto.subtle.importKey(
+    "pkcs8", pemToDER(chain.leafKeyPEM), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]
+  );
+  const x5c = [chain.leaf, chain.intermediate, ...(includeRoot ? [chain.root] : [])].map((d) => Buffer.from(d).toString("base64"));
+  const enc = (o) => bytesToB64url(new TextEncoder().encode(JSON.stringify(o)));
+  const signingInput = `${enc({ alg: "ES256", x5c })}.${enc(payload)}`;
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(signingInput));
+  return `${signingInput}.${bytesToB64url(new Uint8Array(sig))}`;
+}
+
+const chain = makeChain();
+const otherChain = makeChain();
+const basePayload = {
+  bundleId: BUNDLE,
+  productId: "jhfang.MyPianoInstructor2.scans10",
+  transactionId: "2000000123456789",
+  originalTransactionId: "2000000123456789",
+  quantity: 1,
+  type: "Consumable",
+  environment: "Sandbox",
+  purchaseDate: Date.now(),
+  signedDate: Date.now(),
+};
+
+await test("encodeOID / containsOID round-trip", () => {
+  const der = encodeOID("1.2.840.113635.100.6.11.1");
+  assert.deepEqual([...der], [0x06, 0x0a, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x63, 0x64, 0x06, 0x0b, 0x01]);
+  assert.equal(containsOID(chain.leaf, "1.2.840.113635.100.6.11.1"), true);
+  assert.equal(containsOID(chain.intermediate, "1.2.840.113635.100.6.2.1"), true);
+  assert.equal(containsOID(chain.root, "1.2.840.113635.100.6.11.1"), false);
+});
+
+await test("a properly chained signed transaction verifies", async () => {
+  const jws = await signTransaction(chain, basePayload);
+  const payload = await verifySignedTransaction(jws, { bundleId: BUNDLE, rootCertDER: chain.root });
+  assert.equal(payload.productId, basePayload.productId);
+  assert.equal(payload.transactionId, basePayload.transactionId);
+});
+
+await test("chain without the root in x5c still verifies against the pinned root", async () => {
+  const jws = await signTransaction(chain, basePayload, { includeRoot: false });
+  const payload = await verifySignedTransaction(jws, { bundleId: BUNDLE, rootCertDER: chain.root });
+  assert.equal(payload.transactionId, basePayload.transactionId);
+});
+
+await test("a transaction signed by a foreign chain is rejected", async () => {
+  const jws = await signTransaction(otherChain, basePayload);
+  await assert.rejects(verifySignedTransaction(jws, { bundleId: BUNDLE, rootCertDER: chain.root }), PurchaseError);
+});
+
+await test("a tampered payload is rejected", async () => {
+  const jws = await signTransaction(chain, basePayload);
+  const parts = jws.split(".");
+  parts[1] = bytesToB64url(new TextEncoder().encode(JSON.stringify({ ...basePayload, productId: "jhfang.MyPianoInstructor2.scans25" })));
+  await assert.rejects(verifySignedTransaction(parts.join("."), { bundleId: BUNDLE, rootCertDER: chain.root }), PurchaseError);
+});
+
+await test("wrong bundle id, Xcode environment, and refunds are rejected", async () => {
+  for (const override of [{ bundleId: "com.other" }, { environment: "Xcode" }, { revocationDate: Date.now() }]) {
+    const jws = await signTransaction(chain, { ...basePayload, ...override });
+    await assert.rejects(verifySignedTransaction(jws, { bundleId: BUNDLE, rootCertDER: chain.root }), PurchaseError);
+  }
+});
+
+await test("certificates without Apple's marker OIDs are rejected", async () => {
+  const plain = makeChain({ withMarkers: false });
+  const jws = await signTransaction(plain, basePayload);
+  await assert.rejects(verifySignedTransaction(jws, { bundleId: BUNDLE, rootCertDER: plain.root }), PurchaseError);
+  const payload = await verifySignedTransaction(jws, { bundleId: BUNDLE, rootCertDER: plain.root, requireMarkerOIDs: false });
+  assert.equal(payload.productId, basePayload.productId);
+});
+
+await test("POST /v1/purchases/redeem grants credits once per transaction", async () => {
+  const env = withProviderStub(handlerEnv({ __TEST_ROOT_CERT: chain.root }));
+  const token = await sessionFor(env, "buyer");
+  const jws = await signTransaction(chain, basePayload);
+
+  const first = await call(env, "POST", "/v1/purchases/redeem", { token, body: { signedTransaction: jws } });
+  assert.equal(first.status, 200);
+  assert.equal(first.json.added, 10);
+  assert.equal(first.json.credits, 10);
+  assert.equal(first.json.remainingScans, 11);
+
+  const again = await call(env, "POST", "/v1/purchases/redeem", { token, body: { signedTransaction: jws } });
+  assert.equal(again.json.added, 0);
+  assert.equal(again.json.alreadyRedeemed, true);
+  assert.equal(again.json.credits, 10);
+
+  // Same transaction from another account: nothing granted.
+  const other = await sessionFor(env, "someone-else");
+  const replay = await call(env, "POST", "/v1/purchases/redeem", { token: other, body: { signedTransaction: jws } });
+  assert.equal(replay.json.added, 0);
+  assert.equal(replay.json.credits, 0);
+
+  // Paid credits are spent only after the free one.
+  const scan = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
+  assert.equal(scan.json.freeRemaining, 0);
+  assert.equal(scan.json.credits, 10);
+  const scan2 = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "2"] } });
+  assert.equal(scan2.json.credits, 9);
+});
+
+await test("redeem rejects unknown products and forged transactions", async () => {
+  const env = handlerEnv({ __TEST_ROOT_CERT: chain.root });
+  const token = await sessionFor(env, "buyer2");
+  const unknown = await signTransaction(chain, { ...basePayload, productId: "jhfang.MyPianoInstructor2.nothing", transactionId: "1" });
+  assert.equal((await call(env, "POST", "/v1/purchases/redeem", { token, body: { signedTransaction: unknown } })).json.error.code, "unknown_product");
+  const forged = await signTransaction(otherChain, { ...basePayload, transactionId: "2" });
+  assert.equal((await call(env, "POST", "/v1/purchases/redeem", { token, body: { signedTransaction: forged } })).json.error.code, "invalid_purchase");
 });
 
 console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);
