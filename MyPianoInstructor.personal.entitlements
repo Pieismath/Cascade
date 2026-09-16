@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Debug builds use this file so a free (personal) Apple ID team can run
+	     the app on a device. Sign in with Apple lives only in
+	     MyPianoInstructor.entitlements (Release). Once you have a paid team,
+	     point Debug's CODE_SIGN_ENTITLEMENTS back at that file to test sign-in
+	     on device. -->
+</dict>
+</plist>

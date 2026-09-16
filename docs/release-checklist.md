@@ -53,10 +53,19 @@ archive fails with:
    click "+ Capability → Sign in with Apple" once.
 3. Set **Version** (1.0) and **Build** (bump for every upload) in the General tab.
 
-Until enrollment completes you can still run Debug builds on your own device
-with the personal team **if** you temporarily remove the Sign in with Apple
-entitlement (Signing & Capabilities → delete the capability, don't commit that
-change). The scan flow then only works in the debug bring-your-own-key mode.
+**Running on your own phone before enrollment works now:** Debug builds sign
+with `MyPianoInstructor.personal.entitlements` (no Sign in with Apple), so the
+personal team can install them. Plug in the phone, pick your personal team under
+Signing & Capabilities, press Run, then on the phone trust the developer in
+Settings → General → VPN & Device Management the first time. In that build,
+samples, imports, practice, and video export all work; cloud scanning needs
+sign-in and is therefore unavailable (the debug bring-your-own-key mode still
+scans if you enter an Anthropic key in scan settings).
+
+After enrollment, to test Sign in with Apple and purchases on device in Debug,
+change the app target's **Debug** `CODE_SIGN_ENTITLEMENTS` back to
+`MyPianoInstructor.entitlements` (Build Settings → Signing). Release already
+uses the full entitlements, so archives are unaffected either way.
 
 ## 4. Test on a real device (15 minutes)
 
