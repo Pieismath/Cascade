@@ -59,7 +59,7 @@ Where you host docs/privacy-policy.md.
 
 Cascade converts sheet music to interactive piano lessons and videos.
 
-TESTING WITHOUT SCANNING: the Add tab includes a free starter library (eight pieces) that works fully offline. Tap any of them, then use the Play tab. The export button (share icon) in the player renders a video. The scan screen also offers three bundled sample scans ("Try a sample first") that run the whole scan → preview → video flow instantly with a prepared transcription, no sign-in or network needed; the app labels them as samples.
+TESTING WITHOUT SCANNING: the Add tab includes a free starter library (eight pieces) that works fully offline. Tap any of them, then use the Play tab. The export button (share icon) in the player renders a video. The scan screen also offers four bundled sample scans ("Try a sample first": Für Elise opening, Minuet in G, Ode to Joy, Twinkle Twinkle) that run the whole scan → preview → video flow instantly with a prepared transcription, no sign-in or network needed; the app labels them as samples.
 
 TESTING SCANNING: on the Add tab tap "Scan Sheet Music", sign in with Apple (no name or email requested), then import the attached sample PDF or photograph any printed piano score. Each Apple account receives 1 free scan; further scans are sold as consumable in-app purchases (10 Scans, 25 Scans). Recognition takes roughly 30 to 90 seconds and needs a network connection. The images are processed by our server and discarded.
 

@@ -31,7 +31,7 @@ final class SampleScanFlowTests: XCTestCase {
         XCTAssertTrue(scanEntry.waitForExistence(timeout: 10), "scan entry card not found")
         scanEntry.tap()
 
-        let sample = app.buttons["Sample: Twinkle Twinkle Little Star"]
+        let sample = app.buttons["Sample: Für Elise (opening)"]
         XCTAssertTrue(sample.waitForExistence(timeout: 10), "sample picker not shown")
         sample.tap()
 

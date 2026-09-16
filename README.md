@@ -49,8 +49,11 @@ pages ─▶ SheetSystemSplitter ─▶ system crops, batched ─▶ cascade-sca
 4. **Stitch + check.** `MusicXMLStitcher` concatenates and renumbers measures; `MeasureChecker`
    flags measures whose durations don't add up to the time signature. A bad report triggers one
    whole-page retry on the stronger model.
-   Bundled samples (`Models/SampleScans.swift`, pages rendered by `docs/tools-engrave.swift`)
-   skip steps 2–4 and use the starter-library MusicXML, so the flow can be tried free and offline.
+   Bundled samples (`Models/SampleScans.swift`; pages engraved from the MusicXML by
+   `docs/tools-engrave.swift`: Für Elise opening, Minuet in G, Ode to Joy, Twinkle) skip
+   steps 2–4 and use the bundled MusicXML, so the flow can be tried free and offline.
+   Only public-domain works can be bundled; pop songs are copyrighted and must be scanned
+   by the user from their own sheet music.
 5. **Validate + preview.** The app's own parser must produce real notes, then the user sees
    note count, duration, suspicious measures, a piano-roll preview, and can save or export.
 

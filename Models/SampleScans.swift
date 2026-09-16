@@ -19,13 +19,16 @@ struct SampleScan: Identifiable, Hashable {
     /// The MusicXML the scan produces (bundled starter-library file).
     let xmlResource: String
 
+    /// Ordered from the most impressive to the simplest. All public domain.
     static let all: [SampleScan] = [
-        SampleScan(id: "twinkle", title: "Twinkle Twinkle Little Star", composer: "Traditional",
-                   pageResources: ["Sample-TwinkleTwinkle-1"], xmlResource: "TwinkleTwinkle"),
+        SampleScan(id: "furelise", title: "Für Elise (opening)", composer: "Beethoven",
+                   pageResources: ["Sample-FurElise-1", "Sample-FurElise-2"], xmlResource: "FurEliseOpening"),
+        SampleScan(id: "minuet", title: "Minuet in G", composer: "Bach / Petzold",
+                   pageResources: ["Sample-MinuetInG-1", "Sample-MinuetInG-2"], xmlResource: "MinuetInG"),
         SampleScan(id: "ode", title: "Ode to Joy", composer: "Beethoven",
                    pageResources: ["Sample-OdeToJoy-1"], xmlResource: "OdeToJoy"),
-        SampleScan(id: "mary", title: "Mary Had a Little Lamb", composer: "Traditional",
-                   pageResources: ["Sample-MaryHadALittleLamb-1"], xmlResource: "MaryHadALittleLamb"),
+        SampleScan(id: "twinkle", title: "Twinkle Twinkle Little Star", composer: "Traditional",
+                   pageResources: ["Sample-TwinkleTwinkle-1"], xmlResource: "TwinkleTwinkle"),
     ]
 
     func loadPages() -> [UIImage] {
