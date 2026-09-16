@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1">
+      <part-name>Piano</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <!-- divisions=2: q=2, e=1, h=4, dotted-h=6 | 3/4 = 6 ticks/measure -->
+    <!-- G major (fifths=1: F#) | Tempo 140 BPM -->
+    <!-- Voice 1 = Right Hand  |  Voice 2 = Left Hand -->
+    <!-- LH pattern: bass-q(2) + chord-h(4) = 6 ticks per measure -->
+
+    <measure number="1">
+      <attributes>
+        <divisions>2</divisions>
+        <key><fifths>1</fifths></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <direction placement="above"><sound tempo="140"/></direction>
+      <!-- RH: D5(q) G4 A4 B4 C5 (q + 4 eighths) -->
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(q) D3(h) — G major -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="2">
+      <!-- RH: D5(h) G4(q) -->
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: D2(q) A2(h) — D major -->
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="3">
+      <!-- RH: E5(q) C5 D5 E5 F#5 (q + 4 eighths) -->
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: C3(q) G3(h) — C major -->
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="4">
+      <!-- RH: G5(dotted half) -->
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(q) D3(h) — G major -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="5">
+      <!-- RH: D5 E5 D5 C5 B4 A4 (6 eighths) -->
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: A3(q) E3(h) — A minor / E -->
+      <note><pitch><step>A</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="6">
+      <!-- RH: B4(h) G4(q) -->
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: D3(q) B2(h) — D/G -->
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>B</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="7">
+      <!-- RH: E5(q) E5 F#5 G5 A5 (q + 4 eighths) -->
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: A3(q) E3(h) — A minor / D -->
+      <note><pitch><step>A</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="8">
+      <!-- RH: B5(dotted half) — end Section A -->
+      <note><pitch><step>B</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(q) D3(h) — G major -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <!-- Section B -->
+    <measure number="9">
+      <!-- RH: G5 G5 A5 B5 G5 A5 (6 eighths) -->
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(q) B2(h) — G major -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>B</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="10">
+      <!-- RH: D5(h) A5(q) -->
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: D2(q) F#2(h) — D major -->
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="11">
+      <!-- RH: G5 E5 F#5 G5 E5 F#5 (6 eighths) -->
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(q) D3(h) — G major -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="12">
+      <!-- RH: D5(dotted half) -->
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: E3(q) B2(h) — E minor -->
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>B</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="13">
+      <!-- RH: C5 D5 C5 B4 A4 G4 (6 eighths) -->
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: A3(q) E3(h) — A minor -->
+      <note><pitch><step>A</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="14">
+      <!-- RH: B4(h) G4(q) -->
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(q) D3(h) — G major -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="15">
+      <!-- RH: A4 B4 A4 G4 F#4 E4 (6 eighths) -->
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: D2(q) A2(h) — D major -->
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="16">
+      <!-- RH: D5(dotted half) — end Section B -->
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: D2(dotted half) — D bass resolution -->
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>6</duration><voice>2</voice></note>
+    </measure>
+
+    <!-- Section A repeat -->
+    <measure number="17">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="18">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>D</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>A</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="19">
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>C</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>G</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="20">
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="21">
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>D</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>C</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>A</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="22">
+      <note><pitch><step>B</step><octave>4</octave></pitch><duration>4</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>D</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>B</step><octave>2</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="23">
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>2</duration><voice>1</voice></note>
+      <note><pitch><step>E</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>F</step><alter>1</alter><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>G</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <note><pitch><step>A</step><octave>5</octave></pitch><duration>1</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <note><pitch><step>A</step><octave>3</octave></pitch><duration>2</duration><voice>2</voice></note>
+      <note><pitch><step>E</step><octave>3</octave></pitch><duration>4</duration><voice>2</voice></note>
+    </measure>
+
+    <measure number="24">
+      <!-- RH: final G4 -->
+      <note><pitch><step>G</step><octave>4</octave></pitch><duration>6</duration><voice>1</voice></note>
+      <backup><duration>6</duration></backup>
+      <!-- LH: G2(dotted half) — final home -->
+      <note><pitch><step>G</step><octave>2</octave></pitch><duration>6</duration><voice>2</voice></note>
+    </measure>
+
+  </part>
+</score-partwise>

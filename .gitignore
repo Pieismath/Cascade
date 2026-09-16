@@ -1,0 +1,14 @@
+Piano.sf2
+*.sf2
+
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Worker
+server/cascade-scan-worker/node_modules/
+server/cascade-scan-worker/.wrangler/
+server/cascade-scan-worker/.dev.vars

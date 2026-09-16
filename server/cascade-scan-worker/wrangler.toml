@@ -1,0 +1,30 @@
+name = "cascade-scan"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Create the namespace with:
+#   npx wrangler kv namespace create SCAN_KV
+# then paste the returned id below.
+[[kv_namespaces]]
+binding = "SCAN_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[vars]
+# The iOS app's bundle identifier — the audience of Apple identity tokens.
+APPLE_BUNDLE_ID = "jhfang.MyPianoInstructor2"
+# Lifetime free scans per Apple account.
+FREE_SCANS = "5"
+# Session token lifetime in days.
+SESSION_DAYS = "60"
+# Models (override without redeploying code)
+ANTHROPIC_MODEL = "claude-sonnet-5"
+ANTHROPIC_MODEL_HIGH = "claude-fable-5"
+GEMINI_MODEL = "gemini-2.5-flash"
+
+# Secrets (set with `npx wrangler secret put <NAME>`):
+#   SESSION_SECRET      — required; generate with: openssl rand -hex 32
+#   ANTHROPIC_API_KEY   — best quality (paid)
+#   GEMINI_API_KEY      — free-tier friendly (aistudio.google.com)
+# At least one provider key is required. With only GEMINI_API_KEY set, the
+# worker runs entirely on Gemini — a $0 setup. With both, Anthropic is
+# primary and Gemini covers outages.
