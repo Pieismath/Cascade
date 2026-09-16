@@ -21,7 +21,7 @@ Models/         MusicXML parser, playback model, scan pipeline, video/audio expo
 Views/          SwiftUI screens (library, scan, player, stats, onboarding)
 ViewModels/     song library persistence
 Audio/          AVAudioEngine sampler, note scheduler, MIDI input
-Resources/      starter library (.musicxml) + PrivacyInfo.xcprivacy
+Resources/      starter library (.musicxml), sample scan pages (Sample-*.png), PrivacyInfo.xcprivacy
 Piano.sf2       Fluid R3 GM piano soundfont (MIT), bundled
 MyPianoInstructorTests/    Swift Testing: parser goldens, scan pipeline units
 server/cascade-scan-worker/ Cloudflare Worker backend for scanning
@@ -49,6 +49,8 @@ pages ─▶ SheetSystemSplitter ─▶ system crops, batched ─▶ cascade-sca
 4. **Stitch + check.** `MusicXMLStitcher` concatenates and renumbers measures; `MeasureChecker`
    flags measures whose durations don't add up to the time signature. A bad report triggers one
    whole-page retry on the stronger model.
+   Bundled samples (`Models/SampleScans.swift`, pages rendered by `docs/tools-engrave.swift`)
+   skip steps 2–4 and use the starter-library MusicXML, so the flow can be tried free and offline.
 5. **Validate + preview.** The app's own parser must produce real notes, then the user sees
    note count, duration, suspicious measures, a piano-roll preview, and can save or export.
 

@@ -18,6 +18,7 @@ Cascade turns any piano sheet music into an interactive falling-note lesson, the
 
 SCAN OR IMPORT ANYTHING
 • Photograph printed sheet music with the built-in document scanner
+• Try it instantly with bundled sample scans before using a credit
 • Import PDFs or photos from Files
 • Open MusicXML files (.musicxml, .xml, .mxl) from MuseScore, Finale, Sibelius, or any notation app
 • Start immediately with the bundled starter library: Twinkle Twinkle, Ode to Joy, Für Elise, Flight of the Bumblebee, a Chopin Nocturne and more
@@ -58,7 +59,7 @@ Where you host docs/privacy-policy.md.
 
 Cascade converts sheet music to interactive piano lessons and videos.
 
-TESTING WITHOUT SCANNING: the Add tab includes a free starter library (eight pieces) that works fully offline. Tap any of them, then use the Play tab. The export button (share icon) in the player renders a video.
+TESTING WITHOUT SCANNING: the Add tab includes a free starter library (eight pieces) that works fully offline. Tap any of them, then use the Play tab. The export button (share icon) in the player renders a video. The scan screen also offers three bundled sample scans ("Try a sample first") that run the whole scan → preview → video flow instantly with a prepared transcription, no sign-in or network needed; the app labels them as samples.
 
 TESTING SCANNING: on the Add tab tap "Scan Sheet Music", sign in with Apple (no name or email requested), then import the attached sample PDF or photograph any printed piano score. Each Apple account receives 1 free scan; further scans are sold as consumable in-app purchases (10 Scans, 25 Scans). Recognition takes roughly 30 to 90 seconds and needs a network connection. The images are processed by our server and discarded.
 

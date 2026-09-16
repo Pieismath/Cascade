@@ -42,6 +42,9 @@ struct SheetScanView: View {
     @State private var pages: [UIImage] = []
     @State private var songTitle = ""
     @State private var progressText = "Reading the notation…"
+    /// Set while the loaded pages are a bundled sample; Convert then uses the
+    /// prepared transcription instead of the network.
+    @State private var activeSample: SampleScan? = nil
 
     @State private var showCamera = false
     @State private var showFileImporter = false
@@ -86,7 +89,9 @@ struct SheetScanView: View {
     }
 
     /// Cloud mode (signed in, enough credits) or a developer key — either unlocks Convert.
+    /// Bundled samples always work: they don't touch the network.
     private var canRecognize: Bool {
+        if activeSample != nil { return true }
         if cloudConfigured && account.isSignedIn && hasEnoughCredits {
             return true
         }
@@ -105,6 +110,7 @@ struct SheetScanView: View {
                     ScanPreviewView(
                         score: score,
                         songTitle: $songTitle,
+                        isSample: activeSample != nil,
                         onSave: { save(score) },
                         onExport: { saveAndExport(score) },
                         onRetry: { phase = .collectingPages }
@@ -133,6 +139,7 @@ struct SheetScanView: View {
         }
         .fullScreenCover(isPresented: $showCamera) {
             DocumentCameraView { scannedPages in
+                if activeSample != nil { pages.removeAll(); activeSample = nil }
                 pages.append(contentsOf: scannedPages)
             }
             .ignoresSafeArea()
@@ -194,7 +201,9 @@ struct SheetScanView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
-                if cloudConfigured {
+                if activeSample != nil {
+                    sampleLoadedNote
+                } else if cloudConfigured {
                     if !account.isSignedIn {
                         signInCard
                     } else if !hasEnoughCredits {
@@ -232,6 +241,10 @@ struct SheetScanView: View {
                     }
                 }
 
+                if pages.isEmpty {
+                    samplesSection
+                }
+
                 // Page thumbnails
                 if !pages.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
@@ -241,6 +254,7 @@ struct SheetScanView: View {
                             Spacer()
                             Button("Clear All", role: .destructive) {
                                 pages.removeAll()
+                                activeSample = nil
                             }
                             .font(.caption)
                         }
@@ -260,6 +274,7 @@ struct SheetScanView: View {
                                             )
                                         Button {
                                             pages.remove(at: i)
+                                            activeSample = nil
                                         } label: {
                                             Image(systemName: "xmark.circle.fill")
                                                 .font(.title3)
@@ -272,7 +287,7 @@ struct SheetScanView: View {
                             }
                         }
 
-                        if pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan {
+                        if activeSample == nil, pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan {
                             Label(
                                 "That's a lot of pages for one scan. For best results scan up to \(ClaudeSheetMusicRecognizer.maxPagesPerScan) pages at a time.",
                                 systemImage: "exclamationmark.triangle"
@@ -287,7 +302,7 @@ struct SheetScanView: View {
                     Button {
                         startRecognition()
                     } label: {
-                        Label("Convert to Falling Notes", systemImage: "wand.and.stars")
+                        Label(activeSample == nil ? "Convert to Falling Notes" : "Convert Sample (free)", systemImage: "wand.and.stars")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -304,6 +319,82 @@ struct SheetScanView: View {
             }
             .padding()
         }
+    }
+
+    // MARK: - Samples
+
+    /// "Try it" scans: bundled pages with a prepared result — instant, free,
+    /// no sign-in — so people see the whole flow before spending anything.
+    private var samplesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .foregroundColor(AppTheme.accent)
+                Text("Try a sample first")
+                    .font(.headline)
+            }
+            Text("Tap a page to load it, then Convert. Samples use a prepared transcription, so they're instant and free.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(SampleScan.all) { sample in
+                        Button {
+                            loadSample(sample)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let thumb = sample.thumbnail() {
+                                    Image(uiImage: thumb)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 110, height: 140, alignment: .top)
+                                        .clipped()
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+                                }
+                                Text(sample.title)
+                                    .font(.caption).bold()
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+                                Text(sample.composer)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(width: 110, alignment: .leading)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Sample: \(sample.title)")
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(AppTheme.cardBackground)
+        .cornerRadius(14)
+    }
+
+    private var sampleLoadedNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .foregroundColor(AppTheme.accent)
+            Text("Sample loaded — converting is instant and free. Your own scans need sign-in.")
+                .font(.caption).bold()
+            Spacer()
+        }
+        .padding(10)
+        .background(AppTheme.accent.opacity(0.08))
+        .cornerRadius(10)
+    }
+
+    private func loadSample(_ sample: SampleScan) {
+        let images = sample.loadPages()
+        guard !images.isEmpty else {
+            errorMessage = "The sample pages are missing from this build."
+            return
+        }
+        pages = images
+        songTitle = sample.title
+        activeSample = sample
     }
 
     // MARK: - Cards
@@ -474,6 +565,7 @@ struct SheetScanView: View {
             if case .failure(let error) = result { errorMessage = "Import failed: \(error.localizedDescription)" }
             return
         }
+        if activeSample != nil { pages.removeAll(); activeSample = nil }
 
         for url in urls {
             let gotAccess = url.startAccessingSecurityScopedResource()
@@ -526,6 +618,10 @@ struct SheetScanView: View {
     }
 
     private func startRecognition() {
+        if let sample = activeSample {
+            runSampleConversion(sample)
+            return
+        }
         guard let recognizer = makeRecognizer(quality: "standard") else {
             if cloudConfigured && account.isSignedIn && !hasEnoughCredits {
                 errorMessage = "This scan needs \(creditsNeeded) scan credit\(creditsNeeded == 1 ? "" : "s"). Get a scan pack to continue."
@@ -596,6 +692,30 @@ struct SheetScanView: View {
         }
     }
 
+    /// Samples skip the network: the prepared MusicXML goes through the same
+    /// validation and preview as a real result, after a short "reading" beat
+    /// so the flow feels the same.
+    private func runSampleConversion(_ sample: SampleScan) {
+        guard let xml = sample.loadMusicXML() else {
+            errorMessage = "The sample transcription is missing from this build."
+            return
+        }
+        progressText = "Reading the notation… (sample)"
+        phase = .recognizing
+        recognitionTask = Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            do {
+                let score = try SheetMusicValidator.validate(musicXML: xml)
+                if songTitle.isEmpty { songTitle = sample.title }
+                phase = .preview(score)
+            } catch {
+                phase = .collectingPages
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
     // MARK: - Save / Export
 
     @discardableResult
@@ -643,6 +763,7 @@ struct SheetScanView: View {
 private struct ScanPreviewView: View {
     let score: RecognizedScore
     @Binding var songTitle: String
+    var isSample: Bool = false
     let onSave: () -> Void
     let onExport: () -> Void
     let onRetry: () -> Void
@@ -653,6 +774,16 @@ private struct ScanPreviewView: View {
                 Label("Transcription ready — check that it looks right", systemImage: "checkmark.seal.fill")
                     .font(.headline)
                     .foregroundColor(.green)
+
+                if isSample {
+                    Text("Sample: this transcription was prepared in advance, so no scan credit was used. Your own pages go through live recognition.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AppTheme.accent.opacity(0.08))
+                        .cornerRadius(10)
+                }
 
                 // Stats
                 HStack(spacing: 10) {
