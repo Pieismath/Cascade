@@ -19,10 +19,11 @@ const MAX_OUTPUT_TOKENS = 24000;
 export const SYSTEM_PROMPT =
   "You are an expert music engraver who transcribes piano sheet music images into MusicXML with perfect fidelity. You read key signatures, time signatures, clefs, accidentals, ties, dots, tuplets, dynamics, tempo markings, and pedal marks accurately, and you keep both staves rhythmically aligned. Your entire reply is always exactly one complete MusicXML document — no markdown fences, no commentary before or after.";
 
-export function transcriptionRequest(pageCount) {
+export function transcriptionRequest(pageCount, context = "") {
   const pages =
-    pageCount === 1 ? "this image" : `these ${pageCount} images (pages in order)`;
-  return `Transcribe the piano piece in ${pages} into a single continuous MusicXML document.
+    pageCount === 1 ? "this image" : `these ${pageCount} images (in reading order)`;
+  const extra = context && context.trim() ? `\n\nAdditional context for this request:\n${context.trim()}\n` : "";
+  return `Transcribe the piano music in ${pages} into a single continuous MusicXML document.${extra}
 
 Format requirements — the consuming app reads a specific MusicXML subset:
 - \`score-partwise\` with exactly one part (id "P1") for piano.
@@ -82,12 +83,12 @@ export function looksLikeMusicXML(text) {
  * text. Streaming keeps bytes flowing so long transcriptions don't trip idle
  * timeouts between the worker and the API.
  */
-export async function callAnthropic(env, pages, model, fetcher = fetch) {
+export async function callAnthropic(env, pages, model, fetcher = fetch, context = "") {
   const content = pages.map((b64) => ({
     type: "image",
     source: { type: "base64", media_type: "image/jpeg", data: b64 },
   }));
-  content.push({ type: "text", text: transcriptionRequest(pages.length) });
+  content.push({ type: "text", text: transcriptionRequest(pages.length, context) });
 
   const res = await fetcher("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -159,12 +160,12 @@ export async function* sseEvents(body) {
 
 // MARK: Gemini (fallback)
 
-export async function callGemini(env, pages, fetcher = fetch) {
+export async function callGemini(env, pages, fetcher = fetch, context = "") {
   const model = env.GEMINI_MODEL || "gemini-2.5-flash";
   const parts = pages.map((b64) => ({
     inline_data: { mime_type: "image/jpeg", data: b64 },
   }));
-  parts.push({ text: transcriptionRequest(pages.length) });
+  parts.push({ text: transcriptionRequest(pages.length, context) });
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
   const res = await fetcher(url, {
@@ -207,9 +208,9 @@ export async function callGemini(env, pages, fetcher = fetch) {
  *   and Gemini covers retryable Anthropic failures when configured.
  * - With only a Gemini key (free-tier mode): Gemini handles everything.
  */
-export async function recognize(env, pages, quality, fetcher = fetch) {
+export async function recognize(env, pages, quality, fetcher = fetch, context = "") {
   if (!env.ANTHROPIC_API_KEY && env.GEMINI_API_KEY) {
-    const musicXML = await callGemini(env, pages, fetcher);
+    const musicXML = await callGemini(env, pages, fetcher, context);
     return { musicXML, provider: `gemini/${env.GEMINI_MODEL || "gemini-2.5-flash"}` };
   }
 
@@ -220,7 +221,7 @@ export async function recognize(env, pages, quality, fetcher = fetch) {
 
   let primaryError;
   try {
-    const musicXML = await callAnthropic(env, pages, model, fetcher);
+    const musicXML = await callAnthropic(env, pages, model, fetcher, context);
     return { musicXML, provider: `anthropic/${model}` };
   } catch (err) {
     primaryError = err;
@@ -232,7 +233,7 @@ export async function recognize(env, pages, quality, fetcher = fetch) {
     primaryError.retryable;
 
   if (canFallback) {
-    const musicXML = await callGemini(env, pages, fetcher);
+    const musicXML = await callGemini(env, pages, fetcher, context);
     return { musicXML, provider: `gemini/${env.GEMINI_MODEL || "gemini-2.5-flash"}` };
   }
 

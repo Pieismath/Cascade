@@ -327,36 +327,8 @@ struct PlayerView: View {
             stop()
         }
         .sheet(isPresented: $showExportSheet) {
-            VStack(spacing: 20) {
-                Text("Exporting Video")
-                    .font(.title2).bold()
-                    .padding(.top, 30)
-
-                ZStack {
-                    Circle()
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 8)
-                        .frame(width: 100, height: 100)
-                    Circle()
-                        .trim(from: 0, to: exporter.exportProgress)
-                        .stroke(AppTheme.accentGradient, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                        .frame(width: 100, height: 100)
-                        .rotationEffect(.degrees(-90))
-                        .animation(.easeInOut(duration: 0.2), value: exporter.exportProgress)
-                    Text("\(Int(exporter.exportProgress * 100))%")
-                        .font(.title3).bold()
-                }
-
-                Text("Rendering your performance at 1080p 60fps…")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-
-                Spacer()
-            }
-            .presentationDetents([.height(280)])
-            .presentationDragIndicator(.visible)
-            .interactiveDismissDisabled(exporter.isExporting)
+            ExportProgressSheet(progress: exporter.exportProgress)
+                .interactiveDismissDisabled(exporter.isExporting)
         }
         .alert("Export Failed", isPresented: $showExportError) {
             Button("OK", role: .cancel) { }
@@ -364,7 +336,7 @@ struct PlayerView: View {
             Text("Could not export the video. Make sure Piano.sf2 is in the app bundle and try again.")
         }
         .sheet(item: $exportedVideoURL) { url in
-            ShareSheet(url: url)
+            VideoShareSheet(url: url)
                 .ignoresSafeArea()
         }
         .fullScreenCover(isPresented: $showTutorial) {
@@ -935,7 +907,7 @@ struct PlayerView: View {
         // isn't competing with the display link during video rendering.
         stop()
 
-        let filename = "PianoExport.mp4"
+        let filename = ExportFileNaming.videoFileName(for: songTitle)
         let outputURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
         try? FileManager.default.removeItem(at: outputURL)
         exportedVideoURL = nil
@@ -996,25 +968,4 @@ struct PlayerView: View {
         }
     }
 
-}
-
-// MARK: - Share Sheet
-
-/// UIViewControllerRepresentable wrapper for UIActivityViewController.
-/// Using this instead of walking the UIKit VC hierarchy avoids the race
-/// condition where the sheet is presented on a dismissing controller.
-private struct ShareSheet: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-/// URL does not conform to Identifiable by default; add it so we can use
-/// .sheet(item: $exportedVideoURL).
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
 }

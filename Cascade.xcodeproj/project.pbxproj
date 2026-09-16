@@ -72,6 +72,16 @@
 			path = Audio;
 			sourceTree = "<group>";
 		};
+		AABB00212EFFF00000000011 /* MyPianoInstructorTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MyPianoInstructorTests;
+			sourceTree = "<group>";
+		};
+		AABB00222EFFF00000000012 /* MyPianoInstructorUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MyPianoInstructorUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -109,6 +119,8 @@
 				F2C938642EDFBD3600579BDB /* App */,
 				F2C9387E2EDFCB7D00579BDB /* Views */,
 				AABB00112EFFF00000000001 /* Resources */,
+				AABB00212EFFF00000000011 /* MyPianoInstructorTests */,
+				AABB00222EFFF00000000012 /* MyPianoInstructorUITests */,
 				AABB00132EFFF00000000003 /* MyPianoInstructor/Assets.xcassets */,
 				F2C938892EDFCC5F00579BDB /* MyPianoInstructor.app */,
 				F2C9388A2EDFCC5F00579BDB /* MyPianoInstructorTests.xctest */,
@@ -161,6 +173,9 @@
 			dependencies = (
 				F279A5AB2ECBF4ED00CDD455 /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (
+				AABB00212EFFF00000000011 /* MyPianoInstructorTests */,
+			);
 			name = MyPianoInstructorTests;
 			packageProductDependencies = (
 			);
@@ -180,6 +195,9 @@
 			);
 			dependencies = (
 				F279A5B52ECBF4ED00CDD455 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AABB00222EFFF00000000012 /* MyPianoInstructorUITests */,
 			);
 			name = MyPianoInstructorUITests;
 			packageProductDependencies = (
@@ -426,6 +444,7 @@
 				DEVELOPMENT_TEAM = 6N239V8VV5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Cascade;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Cascade uses the camera to scan printed sheet music and turn it into an interactive falling-note lesson.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -461,6 +480,7 @@
 				DEVELOPMENT_TEAM = 6N239V8VV5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Cascade;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Cascade uses the camera to scan printed sheet music and turn it into an interactive falling-note lesson.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

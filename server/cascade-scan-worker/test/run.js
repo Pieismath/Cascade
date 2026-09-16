@@ -255,4 +255,121 @@ await test("truncated output surfaces as truncated error", async () => {
   );
 });
 
+
+// MARK: worker handlers (in-memory KV, real session tokens)
+
+import worker from "../src/index.js";
+
+function memoryKV() {
+  const store = new Map();
+  return {
+    store,
+    async get(key) { return store.has(key) ? store.get(key) : null; },
+    async put(key, value) { store.set(key, String(value)); },
+    async delete(key) { store.delete(key); },
+  };
+}
+
+function handlerEnv(overrides = {}) {
+  return {
+    SESSION_SECRET: "handler-secret",
+    APPLE_BUNDLE_ID: BUNDLE,
+    FREE_SCANS: "2",
+    SESSION_DAYS: "60",
+    SCAN_KV: memoryKV(),
+    ...overrides,
+  };
+}
+
+const ctx = { waitUntil() {} };
+const PAGE = Buffer.from("fake-jpeg-bytes").toString("base64");
+
+async function call(env, method, path, { body, token } = {}) {
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const req = new Request(`https://scan.test${path}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const res = await worker.fetch(req, env, ctx);
+  return { status: res.status, json: await res.json() };
+}
+
+/** Provider stub: every Anthropic call returns SCORE (bypasses real network). */
+function withProviderStub(env) {
+  env.ANTHROPIC_API_KEY = "k";
+  globalThis.fetch = async () =>
+    new Response(sseBody([
+      { type: "content_block_delta", delta: { type: "text_delta", text: SCORE } },
+      { type: "message_delta", delta: { stop_reason: "end_turn" } },
+    ]), { status: 200 });
+  return env;
+}
+
+function sseBody(events) {
+  return events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+}
+
+await test("DELETE /v1/account removes the usage record", async () => {
+  const env = withProviderStub(handlerEnv());
+  const token = await issueSessionToken("del-user", env.SESSION_SECRET, 60);
+  await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
+  assert.equal(JSON.parse(env.SCAN_KV.store.get("u:del-user")).used, 1);
+
+  const del = await call(env, "DELETE", "/v1/account", { token });
+  assert.equal(del.status, 200);
+  assert.equal(del.json.deleted, true);
+  assert.equal(env.SCAN_KV.store.has("u:del-user"), false);
+});
+
+await test("DELETE /v1/account requires a session", async () => {
+  const env = handlerEnv();
+  const res = await call(env, "DELETE", "/v1/account");
+  assert.equal(res.status, 401);
+});
+
+await test("recognize without any provider key reports 503 scan_unavailable", async () => {
+  const env = handlerEnv();
+  const token = await issueSessionToken("u", env.SESSION_SECRET, 60);
+  const res = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE] } });
+  assert.equal(res.status, 503);
+  assert.equal(res.json.error.code, "scan_unavailable");
+});
+
+await test("segmented job charges a single scan across requests", async () => {
+  const env = withProviderStub(handlerEnv());
+  const token = await issueSessionToken("job-user", env.SESSION_SECRET, 60);
+  const jobId = "job-abc-123";
+  const first = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "A"], jobId } });
+  const second = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "B"], jobId, context: "part 2" } });
+  const third = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "C"], jobId } });
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(third.status, 200);
+  assert.equal(third.json.remainingScans, 1);
+  assert.equal(JSON.parse(env.SCAN_KV.store.get("u:job-user")).used, 1);
+});
+
+await test("segmented job keeps working after quota is exhausted mid-job", async () => {
+  const env = withProviderStub(handlerEnv({ FREE_SCANS: "1" }));
+  const token = await issueSessionToken("last-scan", env.SESSION_SECRET, 60);
+  const jobId = "job-last";
+  const first = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "1"], jobId } });
+  assert.equal(first.json.remainingScans, 0);
+  const second = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "2"], jobId } });
+  assert.equal(second.status, 200, "later segments of an already-charged job must not be refused");
+  const fresh = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE + "3"], jobId: "job-new" } });
+  assert.equal(fresh.status, 402);
+});
+
+await test("context changes the cache key", async () => {
+  const env = withProviderStub(handlerEnv());
+  const token = await issueSessionToken("ctx-user", env.SESSION_SECRET, 60);
+  const a = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE], context: "x" } });
+  const b = await call(env, "POST", "/v1/recognize", { token, body: { pages: [PAGE], context: "y" } });
+  assert.equal(a.json.cached, false);
+  assert.equal(b.json.cached, false);
+});
+
 console.log(`\n${passed} tests passed${process.exitCode ? " (with failures)" : ""}`);

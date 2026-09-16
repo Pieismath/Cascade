@@ -8,21 +8,18 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    /// Persisted — only written when user checks "Don't show again"
-    @Binding var suppressOnboarding: Bool
-    /// Session flag — set to false to dismiss onboarding this launch
-    @Binding var showOnboarding: Bool
+    /// Persisted — flipped when the user finishes or skips the intro.
+    @Binding var hasCompletedOnboarding: Bool
 
     @AppStorage("pendingTutorialShow") private var pendingTutorialShow = false
     @AppStorage("hasSeenPlayerWalkthrough") private var hasSeenWalkthrough = false
     @State private var currentPage = 0
-    @State private var dontShowAgain = false
 
     private let pages: [(icon: String, title: String, subtitle: String)] = [
         ("person.3.sequence.fill", "Piano for Everyone",
          "Piano lessons cost $50 to $100 per hour. Cascade brings professional-quality guidance to anyone with a phone, completely free."),
-        ("doc.badge.plus", "Any Sheet Music, Instantly",
-         "Import any MusicXML file, the open standard used by composers worldwide, and watch it transform into a visual falling-note lesson in seconds."),
+        ("doc.viewfinder", "Any Sheet Music, Instantly",
+         "Scan printed sheet music with your camera, import a PDF, or open a MusicXML file, and watch it turn into a visual falling-note lesson."),
         ("hand.tap.fill", "Learn at Your Pace",
          "Slow down to 25%, practice one hand at a time, loop tricky sections, and use Listen Mode to study a piece before you play it."),
         ("chart.bar.fill", "Track Your Journey",
@@ -32,13 +29,12 @@ struct OnboardingView: View {
     ]
 
     private func dismiss() {
-        if dontShowAgain { suppressOnboarding = true }
         // Only queue the tutorial on the very first run — once seen it shouldn't
         // block the notification prompt on every subsequent onboarding dismissal.
         if !hasSeenWalkthrough {
             pendingTutorialShow = true
         }
-        withAnimation { showOnboarding = false }
+        withAnimation { hasCompletedOnboarding = true }
     }
 
     var body: some View {
@@ -50,24 +46,6 @@ struct OnboardingView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
-
-            // "Don't show again" toggle — only visible on the last page
-            if currentPage == pages.count - 1 {
-                Button {
-                    dontShowAgain.toggle()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: dontShowAgain ? "checkmark.square.fill" : "square")
-                            .foregroundColor(dontShowAgain ? AppTheme.accent : .secondary)
-                            .font(.body)
-                        Text("Don't show again")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 10)
-            }
 
             // Bottom button
             Button {

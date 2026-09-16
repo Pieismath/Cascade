@@ -5,7 +5,14 @@ verifies Sign in with Apple, tracks per-account free-scan quota, caches
 identical scans, and routes recognition to Anthropic (primary) with an
 optional Gemini fallback.
 
-## Deploy (one time, ~5 minutes)
+## Current deployment
+
+Deployed as `cascade-scan` at `https://cascade-scan.jaydfds.workers.dev` with
+`SESSION_SECRET` set and KV namespace `35ee0915…` bound. It still needs a
+provider key (`GEMINI_API_KEY` and/or `ANTHROPIC_API_KEY`) before `/v1/recognize`
+does anything but return 503.
+
+## Deploy from scratch (one time, ~5 minutes)
 
 ```bash
 cd server/cascade-scan-worker
@@ -38,10 +45,18 @@ edit and redeploy.
 |--------|-----------------|----------------|---------|
 | POST   | /v1/auth/apple  | Apple id token | Verify Apple sign-in, mint session token |
 | GET    | /v1/me          | session bearer | Remaining scans |
-| POST   | /v1/recognize   | session bearer | Pages (base64 JPEG) → MusicXML |
+| DELETE | /v1/account     | session bearer | Delete the usage record (App Store 5.1.1 account deletion) |
+| POST   | /v1/recognize   | session bearer | Images (base64 JPEG) → MusicXML |
+
+`/v1/recognize` body: `{pages: [b64...], quality?: "standard"|"high", context?: string, jobId?: string}`.
+The app splits long scores into several requests (system crops in batches) that share a
+`jobId`; only the first request of a job consumes a free scan. `context` is appended to the
+prompt so continuation batches know the divisions/key/time/tempo and measure number to
+continue from.
 
 Error responses are `{error: {code, message}}`; the app maps `401` (re-sign-in),
-`402 out_of_scans`, `413`, `422 unreadable/too_long`, and `502`.
+`402 out_of_scans`, `413`, `422 unreadable/too_long`, `502`, and `503 scan_unavailable`
+(deployed without any provider key).
 
 ## Notes & hardening roadmap
 

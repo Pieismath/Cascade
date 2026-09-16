@@ -92,26 +92,27 @@ struct ScanMusicView: View {
 
                         ForEach(demos, id: \.title) { demo in
                             let accent: Color = demo.difficulty == "Beginner" ? .green : demo.difficulty == "Intermediate" ? .orange : .purple
-                            if demo.locked {
-                                // Locked / coming-soon song
+                            Button {
+                                importDemoSong(title: demo.title, resourceName: demo.resourceName)
+                            } label: {
                                 HStack(spacing: 12) {
                                     ZStack {
                                         RoundedRectangle(cornerRadius: 8)
-                                            .fill(Color.secondary.opacity(0.08))
+                                            .fill(accent.opacity(0.15))
                                             .frame(width: 36, height: 36)
-                                        Image(systemName: "lock.fill")
-                                            .foregroundColor(.secondary)
+                                        Image(systemName: "music.note")
+                                            .foregroundColor(accent)
                                             .font(.callout)
                                     }
 
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(demo.title)
                                             .font(.subheadline).bold()
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(.primary)
                                         HStack(spacing: 4) {
                                             Text(demo.composer)
                                                 .font(.caption).bold()
-                                                .foregroundColor(.secondary)
+                                                .foregroundColor(accent)
                                             Text("·")
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
@@ -121,66 +122,19 @@ struct ScanMusicView: View {
                                         }
                                     }
                                     Spacer()
-                                    Text("Soon")
-                                        .font(.caption).bold()
-                                        .foregroundColor(.secondary)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.secondary.opacity(0.1))
-                                        .cornerRadius(6)
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(accent)
+                                        .font(.title3)
                                 }
                                 .padding(12)
                                 .background(AppTheme.cardBackground)
                                 .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.secondary.opacity(0.1), lineWidth: 1)
+                                        .stroke(accent.opacity(0.2), lineWidth: 1)
                                 )
-                            } else {
-                                Button {
-                                    importDemoSong(title: demo.title, resourceName: demo.resourceName)
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        ZStack {
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(accent.opacity(0.15))
-                                                .frame(width: 36, height: 36)
-                                            Image(systemName: "music.note")
-                                                .foregroundColor(accent)
-                                                .font(.callout)
-                                        }
-
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(demo.title)
-                                                .font(.subheadline).bold()
-                                                .foregroundColor(.primary)
-                                            HStack(spacing: 4) {
-                                                Text(demo.composer)
-                                                    .font(.caption).bold()
-                                                    .foregroundColor(accent)
-                                                Text("·")
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                                Text(demo.description)
-                                                    .font(.caption)
-                                                    .foregroundColor(.secondary)
-                                            }
-                                        }
-                                        Spacer()
-                                        Image(systemName: "plus.circle.fill")
-                                            .foregroundColor(accent)
-                                            .font(.title3)
-                                    }
-                                    .padding(12)
-                                    .background(AppTheme.cardBackground)
-                                    .cornerRadius(12)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(accent.opacity(0.2), lineWidth: 1)
-                                    )
-                                }
-                                .buttonStyle(.plain)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -378,7 +332,6 @@ enum DemoSongs {
         let description: String
         let difficulty: String   // "Beginner", "Intermediate", or "Advanced"
         let composer: String
-        var locked: Bool = false
     }
 
     static let all: [DemoSong] = [
@@ -425,24 +378,6 @@ enum DemoSongs {
                  description: "Expressive Romantic nocturne",
                  difficulty: "Advanced",
                  composer: "Chopin"),
-        DemoSong(title: "Moonlight Sonata",
-                 resourceName: "MoonlightSonata",
-                 description: "Beethoven's moonlit masterpiece",
-                 difficulty: "Advanced",
-                 composer: "Beethoven",
-                 locked: true),
-        DemoSong(title: "Clair de Lune",
-                 resourceName: "ClairDeLune",
-                 description: "Debussy's impressionist gem",
-                 difficulty: "Advanced",
-                 composer: "Debussy",
-                 locked: true),
-        DemoSong(title: "Ballade No. 1",
-                 resourceName: "BalladeNo1",
-                 description: "Chopin's dramatic masterwork",
-                 difficulty: "Advanced",
-                 composer: "Chopin",
-                 locked: true),
     ]
 }
 

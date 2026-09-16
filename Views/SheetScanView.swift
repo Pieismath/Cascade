@@ -4,7 +4,8 @@
 //
 //  The scan-to-play flow: capture sheet music with the document camera or
 //  import a PDF/images, send the pages through optical music recognition,
-//  preview the transcription, and save it to the library as a normal song.
+//  preview the transcription, then save it to the library and/or export a
+//  falling-note video straight away.
 //
 
 import SwiftUI
@@ -12,6 +13,16 @@ import VisionKit
 import PDFKit
 import UniformTypeIdentifiers
 import AuthenticationServices
+
+/// Bring-your-own-key scanning is a developer convenience. Release builds are
+/// cloud-only so no customer is ever asked for an API key.
+private var ownKeyAllowed: Bool {
+    #if DEBUG
+    return true
+    #else
+    return false
+    #endif
+}
 
 struct SheetScanView: View {
     @Environment(SongLibraryViewModel.self) var libraryVM
@@ -29,12 +40,19 @@ struct SheetScanView: View {
     @State private var phase: Phase = .collectingPages
     @State private var pages: [UIImage] = []
     @State private var songTitle = ""
+    @State private var progressText = "Reading the notation…"
 
     @State private var showCamera = false
     @State private var showFileImporter = false
     @State private var showSettings = false
     @State private var errorMessage: String? = nil
     @State private var recognitionTask: Task<Void, Never>? = nil
+
+    // Export straight from the preview
+    @State private var exporter = VideoExportManager()
+    @State private var showExportSheet = false
+    @State private var showExportError = false
+    @State private var exportedVideoURL: URL? = nil
 
     @State private var settings = ScanSettings.shared
     @State private var account = ScanAccountManager()
@@ -47,13 +65,12 @@ struct SheetScanView: View {
         ScanCloudConfig.baseURL != nil
     }
 
-    /// Cloud mode (signed in, scans left) or BYOK — either unlocks Convert.
-    /// A signed-in user who runs dry falls back to their own key if they set one.
+    /// Cloud mode (signed in, scans left) or a developer key — either unlocks Convert.
     private var canRecognize: Bool {
         if cloudConfigured && account.isSignedIn && (account.remainingScans ?? 1) > 0 {
             return true
         }
-        return settings.hasAPIKey
+        return ownKeyAllowed && settings.hasAPIKey
     }
 
     var body: some View {
@@ -69,9 +86,8 @@ struct SheetScanView: View {
                         score: score,
                         songTitle: $songTitle,
                         onSave: { save(score) },
-                        onRetry: {
-                            phase = .collectingPages
-                        }
+                        onExport: { saveAndExport(score) },
+                        onRetry: { phase = .collectingPages }
                     )
                 }
             }
@@ -83,6 +99,7 @@ struct SheetScanView: View {
                         recognitionTask?.cancel()
                         dismiss()
                     }
+                    .disabled(exporter.isExporting)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -110,6 +127,19 @@ struct SheetScanView: View {
         .sheet(isPresented: $showSettings) {
             ScanSettingsView(account: account)
         }
+        .sheet(isPresented: $showExportSheet) {
+            ExportProgressSheet(progress: exporter.exportProgress)
+                .interactiveDismissDisabled(exporter.isExporting)
+        }
+        .sheet(item: $exportedVideoURL) { url in
+            VideoShareSheet(url: url)
+                .ignoresSafeArea()
+        }
+        .alert("Export Failed", isPresented: $showExportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Could not export the video. The song is saved in your library — try exporting again from the player.")
+        }
         .task {
             await account.refresh()
         }
@@ -129,7 +159,7 @@ struct SheetScanView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
 
-                Text("Photograph printed sheet music or import a PDF, and Cascade turns it into a falling-note lesson.")
+                Text("Photograph printed sheet music or import a PDF, and Cascade turns it into a falling-note lesson and video.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
@@ -141,8 +171,10 @@ struct SheetScanView: View {
                     } else {
                         scansRemainingPill
                     }
-                } else if !settings.hasAPIKey {
+                } else if ownKeyAllowed && !settings.hasAPIKey {
                     apiKeyPrompt
+                } else if !ownKeyAllowed {
+                    unavailableCard
                 }
 
                 // Source buttons
@@ -208,9 +240,9 @@ struct SheetScanView: View {
                             }
                         }
 
-                        if pages.count > ClaudeSheetMusicRecognizer.maxPagesPerRequest {
+                        if pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan {
                             Label(
-                                "Long pieces may come back incomplete. For best results scan up to \(ClaudeSheetMusicRecognizer.maxPagesPerRequest) pages at a time.",
+                                "That's a lot of pages for one scan. For best results scan up to \(ClaudeSheetMusicRecognizer.maxPagesPerScan) pages at a time.",
                                 systemImage: "exclamationmark.triangle"
                             )
                             .font(.caption)
@@ -231,8 +263,10 @@ struct SheetScanView: View {
                             .background(canRecognize ? AnyShapeStyle(AppTheme.accentGradient) : AnyShapeStyle(Color.gray))
                             .cornerRadius(14)
                     }
-                    .disabled(!canRecognize)
+                    .disabled(!canRecognize || pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan)
                 }
+
+                privacyNote
 
                 Spacer(minLength: 30)
             }
@@ -240,13 +274,13 @@ struct SheetScanView: View {
         }
     }
 
-    // MARK: - Cloud account cards
+    // MARK: - Cards
 
     private var signInCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Get \(account.freeScans ?? 5) free scans", systemImage: "sparkles")
                 .font(.subheadline).bold()
-            Text("Sign in and your free scans follow your account — no setup, no API key.")
+            Text("Sign in and your free scans follow your account — no setup needed. We only receive an anonymous account ID, never your name or email.")
                 .font(.caption)
                 .foregroundColor(.secondary)
             SignInWithAppleButton(.signIn) { request in
@@ -297,10 +331,25 @@ struct SheetScanView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("You've used all your free scans")
                     .font(.subheadline).bold()
-                Text("More scan options are coming soon. Power users can add their own API key under scan settings → Advanced.")
+                Text(ownKeyAllowed
+                     ? "More scan options are coming soon. Developers can add an API key under scan settings → Advanced."
+                     : "More scan options are coming soon. You can still import MusicXML files and play the starter library.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(12)
+    }
+
+    private var unavailableCard: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "wifi.exclamationmark")
+                .foregroundColor(.orange)
+            Text("Scanning isn't available in this build.")
+                .font(.subheadline).bold()
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -313,7 +362,7 @@ struct SheetScanView: View {
             Image(systemName: "key.fill")
                 .foregroundColor(.orange)
             VStack(alignment: .leading, spacing: 6) {
-                Text("Add your Anthropic API key to enable scanning")
+                Text("Developer build: add an Anthropic API key to enable scanning")
                     .font(.subheadline).bold()
                 Text("Recognition runs on the Claude vision API. Your key is stored securely in the Keychain and used only for your own scans.")
                     .font(.caption)
@@ -326,6 +375,23 @@ struct SheetScanView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.1))
         .cornerRadius(12)
+    }
+
+    /// Plain-language disclosure of what leaves the device when you scan.
+    private var privacyNote: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label("How scanning works", systemImage: "lock.shield")
+                .font(.caption).bold()
+                .foregroundColor(.secondary)
+            Text("When you tap Convert, the page images are sent over an encrypted connection to Cascade's scan service, where an AI model reads the notation. Pages are processed, not stored, and are never used to identify you. Everything else in Cascade works offline.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            if let url = ScanCloudConfig.privacyPolicyURL {
+                Link("Privacy Policy", destination: url)
+                    .font(.caption2).bold()
+            }
+        }
+        .padding(.top, 6)
     }
 
     private func sourceButton(icon: String, title: String, subtitle: String, disabled: Bool, action: @escaping () -> Void) -> some View {
@@ -362,9 +428,11 @@ struct SheetScanView: View {
             Spacer()
             ProgressView()
                 .controlSize(.large)
-            Text("Reading the notation…")
+            Text(progressText)
                 .font(.headline)
-            Text("Transcribing \(pages.count) page\(pages.count == 1 ? "" : "s") of sheet music into playable notes. This usually takes under a minute.")
+                .contentTransition(.numericText())
+                .animation(.default, value: progressText)
+            Text("Transcribing \(pages.count) page\(pages.count == 1 ? "" : "s") of sheet music into playable notes. Longer pieces are read in several parts; this usually takes a minute or two.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -399,9 +467,17 @@ struct SheetScanView: View {
                     guard let page = document.page(at: pageIndex) else { continue }
                     let bounds = page.bounds(for: .mediaBox)
                     let longest = max(bounds.width, bounds.height)
-                    let scale = longest > 0 ? SheetPagePrep.maxDimension / longest : 1
+                    // Rasterise larger than the upload size so system crops
+                    // keep full resolution after splitting.
+                    let target = SheetPagePrep.maxDimension * 2
+                    let scale = longest > 0 ? target / longest : 1
                     let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
                     pages.append(page.thumbnail(of: size, for: .mediaBox))
+                }
+                if songTitle.isEmpty {
+                    songTitle = url.deletingPathExtension().lastPathComponent
+                        .replacingOccurrences(of: "_", with: " ")
+                        .replacingOccurrences(of: "-", with: " ")
                 }
             } else if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
                 pages.append(image)
@@ -413,8 +489,8 @@ struct SheetScanView: View {
 
     // MARK: - Recognition
 
-    /// Cloud recognizer when signed in with scans left; otherwise the user's
-    /// own key. `quality` only matters on the cloud path.
+    /// Cloud recognizer when signed in with scans left; otherwise a developer
+    /// key. `quality` only matters on the cloud path.
     private func makeRecognizer(quality: String) -> SheetMusicRecognizer? {
         if let baseURL = ScanCloudConfig.baseURL,
            account.isSignedIn,
@@ -422,44 +498,55 @@ struct SheetScanView: View {
            (account.remainingScans ?? 1) > 0 {
             return CascadeCloudRecognizer(baseURL: baseURL, sessionToken: token, quality: quality)
         }
-        if settings.hasAPIKey {
+        if ownKeyAllowed && settings.hasAPIKey {
             return settings.makeRecognizer()
         }
         return nil
     }
 
-    private func recognizeAndValidate(_ recognizer: SheetMusicRecognizer, pages: [Data]) async throws -> RecognizedScore {
-        let musicXML = try await recognizer.recognize(pages: pages)
-        try Task.checkCancellation()
-        return try SheetMusicValidator.validate(musicXML: musicXML)
-    }
-
     private func startRecognition() {
-        let jpegs = pages.compactMap { SheetPagePrep.jpegData(from: $0) }
-        guard jpegs.count == pages.count else {
-            errorMessage = SheetMusicRecognitionError.imageEncodingFailed.localizedDescription
-            return
-        }
         guard let recognizer = makeRecognizer(quality: "standard") else {
             errorMessage = cloudConfigured
-                ? "Sign in to scan, or add your own API key in scan settings."
+                ? "Sign in to scan."
                 : SheetMusicRecognitionError.missingAPIKey.localizedDescription
             return
         }
 
         let usingCloud = recognizer is CascadeCloudRecognizer
+        let snapshot = pages
+        progressText = "Preparing pages…"
         phase = .recognizing
+
+        let report: ScoreTranscriptionJob.Progress = { text in
+            Task { @MainActor in progressText = text }
+        }
 
         recognitionTask = Task {
             do {
                 var score: RecognizedScore
                 do {
-                    score = try await recognizeAndValidate(recognizer, pages: jpegs)
-                } catch let err as SheetMusicRecognitionError where usingCloud && err.isEscalatable {
-                    // Standard pass produced unusable notation — one retry on
-                    // the stronger model before giving up.
-                    guard let retry = makeRecognizer(quality: "high") else { throw err }
-                    score = try await recognizeAndValidate(retry, pages: jpegs)
+                    // Pass 1: system crops, a few per request.
+                    let job = ScoreTranscriptionJob(recognizer: recognizer, pages: snapshot, strategy: .systems(perBatch: 4))
+                    score = try await job.run(progress: report)
+
+                    // Rhythm badly off → one whole-page pass on the stronger
+                    // model (cloud only; rides on the same free scan).
+                    if usingCloud, score.measureReport.suspectFraction > 0.25,
+                       let retry = makeRecognizer(quality: "high") {
+                        progressText = "Double-checking tricky passages…"
+                        let second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
+                        if let better = try? await second.run(progress: report),
+                           better.measureReport.suspectFraction < score.measureReport.suspectFraction {
+                            score = better
+                        }
+                    }
+                } catch let err as SheetMusicRecognitionError where err.isEscalatable {
+                    // Pass 1 produced nothing usable — try whole pages, on the
+                    // stronger model when the cloud offers one.
+                    let retry = (usingCloud ? makeRecognizer(quality: "high") : nil) ?? recognizer
+                    progressText = "Trying again with full pages…"
+                    let second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
+                    score = try await second.run(progress: report)
                 }
 
                 if songTitle.isEmpty {
@@ -480,15 +567,45 @@ struct SheetScanView: View {
         }
     }
 
-    private func save(_ score: RecognizedScore) {
+    // MARK: - Save / Export
+
+    @discardableResult
+    private func save(_ score: RecognizedScore, andPlay: Bool = true) -> Song {
         let title = songTitle.trimmingCharacters(in: .whitespaces)
         let newSong = libraryVM.addSong(
             title: title.isEmpty ? "Scanned Music" : title,
             musicXML: score.musicXML
         )
         selectedSong = newSong
-        dismiss()
-        tabSelection = 2
+        if andPlay {
+            dismiss()
+            tabSelection = 2
+        }
+        return newSong
+    }
+
+    /// Saves to the library first (so nothing is lost if the export fails),
+    /// then renders the video and offers the share sheet.
+    private func saveAndExport(_ score: RecognizedScore) {
+        let song = save(score, andPlay: false)
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(ExportFileNaming.videoFileName(for: song.title))
+        try? FileManager.default.removeItem(at: outputURL)
+        exportedVideoURL = nil
+        showExportSheet = true
+
+        exporter.exportVideo(playbackData: score.playback, outputURL: outputURL) { success in
+            showExportSheet = false
+            // Give the progress sheet time to dismiss before presenting the
+            // share sheet / alert — same-transaction swaps get dropped.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if success {
+                    exportedVideoURL = outputURL
+                } else {
+                    showExportError = true
+                }
+            }
+        }
     }
 }
 
@@ -498,6 +615,7 @@ private struct ScanPreviewView: View {
     let score: RecognizedScore
     @Binding var songTitle: String
     let onSave: () -> Void
+    let onExport: () -> Void
     let onRetry: () -> Void
 
     var body: some View {
@@ -512,7 +630,11 @@ private struct ScanPreviewView: View {
                     previewStat("\(score.playback.notes.count)", "Notes")
                     previewStat(formatDuration(score.playback.totalDuration), "Duration")
                     previewStat("\(Int(score.playback.tempo))", "BPM")
-                    previewStat("\(score.playback.pedalEvents.count)", "Pedals")
+                    previewStat("\(score.measureReport.measureCount)", "Measures")
+                }
+
+                if !score.measureReport.suspectMeasures.isEmpty {
+                    rhythmWarning
                 }
 
                 // Note preview
@@ -544,6 +666,15 @@ private struct ScanPreviewView: View {
                         .cornerRadius(14)
                 }
 
+                Button(action: onExport) {
+                    Label("Save & Export Video", systemImage: "film")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(.bordered)
+                .tint(AppTheme.accent)
+
                 Button(action: onRetry) {
                     Label("Scan Again", systemImage: "arrow.counterclockwise")
                         .font(.subheadline)
@@ -559,6 +690,27 @@ private struct ScanPreviewView: View {
             }
             .padding()
         }
+    }
+
+    private var rhythmWarning: some View {
+        let report = score.measureReport
+        let list = report.suspectMeasures.prefix(6).map(String.init).joined(separator: ", ")
+        let more = report.suspectMeasures.count > 6 ? " and \(report.suspectMeasures.count - 6) more" : ""
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "metronome")
+                .foregroundColor(.orange)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("\(report.suspectMeasures.count) of \(report.measureCount) measures may have rhythm errors")
+                    .font(.caption).bold()
+                Text("Measure\(report.suspectMeasures.count == 1 ? "" : "s") \(list)\(more) don't add up to the time signature. Listen to those spots; a sharper scan usually fixes them.")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.1))
+        .cornerRadius(10)
     }
 
     private var notePreview: some View {
@@ -611,10 +763,12 @@ private struct ScanPreviewView: View {
 // MARK: - Escalation policy
 
 private extension SheetMusicRecognitionError {
-    /// Worth one retry on a stronger model; truncation and setup problems aren't.
+    /// Worth one retry with a different strategy; setup problems aren't.
     var isEscalatable: Bool {
-        if case .unreadableScore = self { return true }
-        return false
+        switch self {
+        case .unreadableScore, .truncatedResult: return true
+        default: return false
+        }
     }
 }
 
@@ -625,6 +779,9 @@ private struct ScanSettingsView: View {
     let account: ScanAccountManager
     @State private var settings = ScanSettings.shared
     @State private var keyInput: String = ScanSettings.shared.apiKey
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -635,47 +792,62 @@ private struct ScanSettingsView: View {
                             LabeledContent("Free scans left") {
                                 Text(account.remainingScans.map(String.init) ?? "—")
                             }
-                            Button("Sign Out", role: .destructive) {
+                            Button("Sign Out") {
                                 account.signOut()
                             }
+                            Button("Delete Account…", role: .destructive) {
+                                confirmDelete = true
+                            }
+                            .disabled(deleting)
                         } else {
-                            Text("Sign in from the scan screen to get free scans — no API key needed.")
+                            Text("Sign in from the scan screen to get free scans.")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                         }
                     } header: {
                         Text("Account")
+                    } footer: {
+                        Text("Your account holds only an anonymous Apple sign-in ID and how many free scans you've used. Deleting it removes that record from our servers.")
+                    }
+                }
+
+                if ownKeyAllowed {
+                    Section {
+                        SecureField("sk-ant-…", text: $keyInput)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .onChange(of: keyInput) { _, newValue in
+                                settings.apiKey = newValue
+                            }
+                    } header: {
+                        Text("Developer — Your Own API Key")
+                    } footer: {
+                        Text("Debug builds only. Used when you're not signed in or have run out of free scans. Stored in the device Keychain.")
+                    }
+
+                    Section {
+                        Picker("Model", selection: Binding(
+                            get: { settings.model },
+                            set: { settings.model = $0 }
+                        )) {
+                            ForEach(ScanSettings.availableModels, id: \.id) { model in
+                                Text(model.label).tag(model.id)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    } header: {
+                        Text("Recognition Model (own-key scans)")
                     }
                 }
 
                 Section {
-                    SecureField("sk-ant-…", text: $keyInput)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onChange(of: keyInput) { _, newValue in
-                            settings.apiKey = newValue
-                        }
-                } header: {
-                    Text(ScanCloudConfig.baseURL != nil ? "Advanced — Your Own API Key" : "Anthropic API Key")
-                } footer: {
-                    Text(ScanCloudConfig.baseURL != nil
-                         ? "Optional. Used only when you're not signed in or you've run out of free scans. Create a key at console.anthropic.com; it's stored in the device Keychain."
-                         : "Create a key at console.anthropic.com → API Keys. It is stored in the device Keychain and sent only to Anthropic with your scans. A typical scan costs a few cents.")
-                }
-
-                Section {
-                    Picker("Model", selection: Binding(
-                        get: { settings.model },
-                        set: { settings.model = $0 }
-                    )) {
-                        ForEach(ScanSettings.availableModels, id: \.id) { model in
-                            Text(model.label).tag(model.id)
-                        }
+                    if let url = ScanCloudConfig.privacyPolicyURL {
+                        Link("Privacy Policy", destination: url)
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
+                    LabeledContent("Version", value: Self.versionString)
                 } header: {
-                    Text("Recognition Model (own-key scans)")
+                    Text("About")
                 }
             }
             .navigationTitle("Scan Settings")
@@ -686,7 +858,41 @@ private struct ScanSettingsView: View {
                         .fontWeight(.semibold)
                 }
             }
+            .confirmationDialog(
+                "Delete your Cascade account?",
+                isPresented: $confirmDelete,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Account", role: .destructive) {
+                    deleting = true
+                    Task {
+                        do {
+                            try await account.deleteAccount()
+                        } catch {
+                            deleteError = error.localizedDescription
+                        }
+                        deleting = false
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes your scan record from our servers and signs you out. Songs already in your library stay on this device.")
+            }
+            .alert("Couldn't Delete Account", isPresented: Binding(
+                get: { deleteError != nil },
+                set: { if !$0 { deleteError = nil } }
+            )) {
+                Button("OK", role: .cancel) { deleteError = nil }
+            } message: {
+                Text(deleteError ?? "")
+            }
         }
+    }
+
+    private static var versionString: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(version) (\(build))"
     }
 }
 

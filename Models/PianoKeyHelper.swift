@@ -7,7 +7,7 @@
 
 import Foundation
 
-enum PianoKeyHelper {
+nonisolated enum PianoKeyHelper {
 
     // Full MIDI range for an 88-key piano
     static let lowestMIDIPitch = 21

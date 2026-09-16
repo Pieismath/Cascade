@@ -47,9 +47,17 @@ enum SheetMusicRecognitionError: LocalizedError {
 // MARK: - Recognizer Protocol
 
 protocol SheetMusicRecognizer {
-    /// Converts sheet-music page images (JPEG data, in page order) to MusicXML.
+    /// Converts sheet-music images (JPEG data, in reading order) to MusicXML.
+    /// `context` carries continuation guidance for multi-request jobs and
+    /// `jobID` groups those requests for quota purposes (cloud only).
     /// Nonisolated so encoding and network work stay off the main actor.
-    nonisolated func recognize(pages: [Data]) async throws -> String
+    nonisolated func recognize(pages: [Data], context: String?, jobID: String?) async throws -> String
+}
+
+extension SheetMusicRecognizer {
+    nonisolated func recognize(pages: [Data]) async throws -> String {
+        try await recognize(pages: pages, context: nil, jobID: nil)
+    }
 }
 
 // MARK: - Validation
@@ -58,6 +66,8 @@ protocol SheetMusicRecognizer {
 struct RecognizedScore {
     let musicXML: String
     let playback: PlaybackData
+    /// Rhythm sanity report — which measures don't add up to the time signature.
+    let measureReport: MeasureChecker.Report
 }
 
 enum SheetMusicValidator {
@@ -71,13 +81,17 @@ enum SheetMusicValidator {
                 "No readable music was found in the scan. Make sure the pages are sharp, well-lit, and right-side up, then try again."
             )
         }
-        return RecognizedScore(musicXML: musicXML, playback: playback)
+        return RecognizedScore(
+            musicXML: musicXML,
+            playback: playback,
+            measureReport: MeasureChecker.check(musicXML: musicXML)
+        )
     }
 }
 
 // MARK: - Page Image Preparation
 
-enum SheetPagePrep {
+nonisolated enum SheetPagePrep {
     /// Longest edge sent to the vision model — larger is wasted tokens,
     /// smaller loses beams and dots.
     static let maxDimension: CGFloat = 1568
@@ -108,11 +122,11 @@ struct ClaudeSheetMusicRecognizer: SheetMusicRecognizer {
 
     private nonisolated static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
 
-    /// Beyond this, output length becomes the limiting factor and results
-    /// arrive truncated; the UI surfaces a friendly error instead.
-    static let maxPagesPerRequest = 6
+    /// Pages per scan the UI allows. Requests are batched by system, so this
+    /// is a sanity limit on scan size rather than a per-request ceiling.
+    static let maxPagesPerScan = 12
 
-    nonisolated func recognize(pages: [Data]) async throws -> String {
+    nonisolated func recognize(pages: [Data], context: String?, jobID: String?) async throws -> String {
         guard !apiKey.isEmpty else { throw SheetMusicRecognitionError.missingAPIKey }
         guard !pages.isEmpty else {
             throw SheetMusicRecognitionError.unreadableScore("No pages to recognize.")
@@ -128,7 +142,7 @@ struct ClaudeSheetMusicRecognizer: SheetMusicRecognizer {
                 ]
             ]
         }
-        content.append(["type": "text", "text": Self.transcriptionRequest(pageCount: pages.count)])
+        content.append(["type": "text", "text": Self.transcriptionRequest(pageCount: pages.count, context: context)])
 
         let body: [String: Any] = [
             "model": model,
@@ -214,9 +228,10 @@ struct ClaudeSheetMusicRecognizer: SheetMusicRecognizer {
     You are an expert music engraver who transcribes piano sheet music images into MusicXML with perfect fidelity. You read key signatures, time signatures, clefs, accidentals, ties, dots, tuplets, dynamics, tempo markings, and pedal marks accurately, and you keep both staves rhythmically aligned. Your entire reply is always exactly one complete MusicXML document — no markdown fences, no commentary before or after.
     """
 
-    nonisolated static func transcriptionRequest(pageCount: Int) -> String {
-        """
-        Transcribe the piano piece in \(pageCount == 1 ? "this image" : "these \(pageCount) images (pages in order)") into a single continuous MusicXML document.
+    nonisolated static func transcriptionRequest(pageCount: Int, context: String? = nil) -> String {
+        let extra = (context?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : "\n\nAdditional context for this request:\n\($0)\n" } ?? ""
+        return """
+        Transcribe the piano music in \(pageCount == 1 ? "this image" : "these \(pageCount) images (in reading order)") into a single continuous MusicXML document.\(extra)
 
         Format requirements — the consuming app reads a specific MusicXML subset:
         - `score-partwise` with exactly one part (id "P1") for piano.

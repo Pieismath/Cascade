@@ -1,136 +1,99 @@
-# Cascade (MyPianoInstructor)
+# Cascade
 
-Cascade is an interactive piano-learning app built with SwiftUI.  
-Users can scan sheet music, automatically generate a playable transcription, and learn pieces through a real-time piano keyboard visualization.
+Cascade is an iOS app that turns piano sheet music into interactive falling-note
+lessons and shareable videos. Photograph a printed score or import a PDF, and a
+minute later you can slow it down, loop it, play along with accuracy feedback,
+or export a 1080p60 video with piano audio.
 
-This project aims to make reading complex sheet music easier for beginners and intermediate players by providing a “Synthesia-style” playback experience directly on iOS.
+- **Scan** — VisionKit document camera or PDF/image import → cloud recognition → MusicXML → falling notes
+- **Import** — `.musicxml`, `.xml`, `.mxl` from MuseScore, Finale, Sibelius, …
+- **Learn** — 25–200% speed, hand isolation, looping, Listen Mode, on-screen or MIDI keyboard with note-by-note grading
+- **Export** — 1080p 60fps video with offline-rendered piano audio, from the player or straight from a scan
+- **Progress** — practice calendar, streaks, achievements, reminders
 
----
+Everything except scanning works offline.
 
-## 📷 Sheet Music Scanning (OMR)
+## Repository layout
 
-The Add tab's **Scan Sheet Music** flow turns printed sheet music into a playable falling-note lesson:
-
-1. **Capture** — VisionKit document camera (auto-crop, perspective correction) or PDF/image import (PDFKit rasterizes pages).
-2. **Recognize** — pages are downscaled and sent to the Claude vision API, which returns MusicXML constrained to the subset `MusicXMLParser` supports (`Models/SheetMusicRecognition.swift`). The backend sits behind the `SheetMusicRecognizer` protocol, so a self-hosted Audiveris server or an on-device model can replace it without UI changes.
-3. **Validate & preview** — the result is parsed by the app's own `MusicXMLParser`; garbage is rejected, and the user previews note count/duration/piano-roll before saving.
-4. **Play** — the saved song flows through the exact same MusicXML → `PlaybackData` → falling-notes pipeline as any imported file.
-
-**Two ways to power recognition:**
-
-- **Cascade Cloud (for shipping to real users):** deploy the bundled backend once — see [server/cascade-scan-worker/README.md](server/cascade-scan-worker/README.md) — and set `ScanCloudConfig.baseURL` in `Models/ScanCloud.swift`. Users then just **Sign in with Apple** and get free scans (default 5, `FREE_SCANS` in `wrangler.toml`); your provider keys stay server-side, quota is per Apple account, identical scans are cached, and Anthropic outages fall back to Gemini automatically. Requires the Sign in with Apple capability on the app target (entitlements file is already wired; enable the capability for your team in Signing & Capabilities).
-- **Bring-your-own-key (default in this repo, good for development/TestFlight):** with `ScanCloudConfig.baseURL = nil`, the scan screen asks for an Anthropic API key (gear menu, stored in Keychain) and calls the API directly. When cloud mode is on, an own key still works as an "Advanced" fallback for users who run out of free scans.
-
-A typical scan costs a few cents. Everything else in the app remains fully offline.
-
----
-
-## 🚀 Features (In Progress)
-
-### ✔️ App Architecture (MVVM)
-- `Song` model for metadata  
-- `SongLibraryViewModel` with `@Published` song storage  
-- EnvironmentObject state shared across all screens  
-
-### ✔️ Tab-Based Navigation
-A clean `TabView` with:
-- **Home** – full song library
-- **Scan** – upload or capture sheet music (mock flow)
-- **Play** – playback UI using selected or newly scanned song
-
-### ✔️ Song Library UI
-- Displays all songs created by the user  
-- Shows recently scanned songs  
-- Tapping a song loads it directly into PlaybackView  
-
-### ✔️ Sheet Music Scanning (Mocked)
-- UI for uploading or photographing sheet music  
-- Input prompt for song title  
-- Adds new song to library and jumps to playback  
-
-### ✔️ Playback Screen
-Includes:
-- Selected song title  
-- Mock sheet music preview  
-- Play / Pause / Jump buttons  
-- Progress bar  
-- Animated piano keyboard that highlights keys over time  
-
-### ✔️ Piano Keyboard Component
-Reusable `PianoKeyboardView` that:
-- Draws a horizontal keyboard  
-- Highlights one key at a time based on playback animation  
-- Built with GeometryReader + variable key sizing  
-
----
-
-## 🎯 Current Architecture
-
-```plaintext
-MyPianoInstructor/
-│
-├── MyPianoInstructorApp.swift
-├── RootTabView.swift
-│
-├── Models/
-│   └── Song.swift
-│
-├── ViewModels/
-│   └── SongLibraryViewModel.swift
-│
-└── Views/
-    ├── SongLibraryView.swift
-    ├── ScanMusicView.swift
-    ├── PlaybackView.swift
-    └── PianoKeyboardView.swift
 ```
----
+App/            entry point, orientation handling
+Models/         MusicXML parser, playback model, scan pipeline, video/audio export
+Views/          SwiftUI screens (library, scan, player, stats, onboarding)
+ViewModels/     song library persistence
+Audio/          AVAudioEngine sampler, note scheduler, MIDI input
+Resources/      starter library (.musicxml) + PrivacyInfo.xcprivacy
+Piano.sf2       Fluid R3 GM piano soundfont (MIT), bundled
+MyPianoInstructorTests/    Swift Testing: parser goldens, scan pipeline units
+server/cascade-scan-worker/ Cloudflare Worker backend for scanning
+docs/           privacy policy, App Store listing copy, release checklist
+```
 
-## 🔧 Tech Stack
+Xcode project: `Cascade.xcodeproj` (file-system-synchronized groups — drop a
+file into a folder and it joins the target). Deployment target iOS 26.1.
 
-- **SwiftUI**
-- **MVVM Architecture**
-- **ObservableObject + EnvironmentObject**
-- **Timer-based animations**
-- **(Future) AVAudioEngine for MIDI playback**
-- **(Future) OMR (Optical Music Recognition) API for sheet music parsing**
+## How scanning works
 
----
+```
+pages ─▶ SheetSystemSplitter ─▶ system crops, batched ─▶ cascade-scan worker ─▶ vision model
+      ◀─ MeasureChecker ◀─ MusicXMLStitcher ◀───────────── MusicXML per batch ◀─┘
+```
 
-## 🛣️ Roadmap
+1. **Capture.** The document camera auto-crops and deskews; PDFs are rasterised at ~3000 px.
+2. **Split.** `SheetSystemSplitter` (`Models/ScoreTranscription.swift`) finds staff lines with a
+   row-darkness profile and crops each grand-staff system. Sending systems instead of whole
+   pages gives the model several times more pixels per staff line and keeps every reply short.
+   If detection is unsure the page goes whole.
+3. **Recognise.** Batches of ~4 systems go to the worker with a shared job id (one request per
+   batch, one free scan per job). The prompt pins the model to the MusicXML subset our parser
+   reads; continuation batches receive the divisions/key/time/tempo established so far.
+4. **Stitch + check.** `MusicXMLStitcher` concatenates and renumbers measures; `MeasureChecker`
+   flags measures whose durations don't add up to the time signature. A bad report triggers one
+   whole-page retry on the stronger model.
+5. **Validate + preview.** The app's own parser must produce real notes, then the user sees
+   note count, duration, suspicious measures, a piano-roll preview, and can save or export.
 
-### Short-Term
-- Add realistic black/white keys to the keyboard  
-- Add basic audio playback for each highlighted note  
-- Add real persistence (SwiftData or CoreData)  
-- Improve UI layout and spacing  
+### Backend
 
-### Medium-Term
-- Integrate real OMR (Optical Music Recognition)  
-- Parse MusicXML into a playable timeline  
-- Display falling-note animation instead of simple highlights  
+`server/cascade-scan-worker` is a Cloudflare Worker (plain JS, offline tests in
+`test/run.js`). It verifies Sign in with Apple, mints session tokens, meters free
+scans per account in KV, caches identical scans, routes to Anthropic with Gemini
+fallback (or Gemini-only for a $0 setup), and supports account deletion.
 
-### Long-Term
-- Export videos of playback  
-- Allow custom tempo and looping  
-- Cloud sync for scanned songs  
-- Learn-mode with slowing, pausing, and note isolation  
+Deployed at `https://cascade-scan.jaydfds.workers.dev`; the app points at it via
+`ScanCloudConfig.baseURL`. See [docs/release-checklist.md](docs/release-checklist.md)
+for the one remaining secret to set (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`).
 
----
+Debug builds additionally accept a personal Anthropic key in scan settings
+(bring-your-own-key) so you can develop without the worker. Release builds are
+cloud-only.
 
-## 📸 Screenshots / Wireframes
+## Building and testing
 
-(Soon: add your hand-drawn sketches or simulator screenshots)
+```bash
+# App
+xcodebuild -project Cascade.xcodeproj -scheme MyPianoInstructor \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 
----
+# Unit tests (parser goldens, splitter, stitcher, measure checker)
+xcodebuild -project Cascade.xcodeproj -scheme MyPianoInstructor \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -only-testing:MyPianoInstructorTests test
 
-## 🤝 Contributing
+# Worker tests
+cd server/cascade-scan-worker && node test/run.js
+```
 
-Pull requests are welcome as the project evolves.  
-For major changes, please open an issue first to discuss what you’d like to change.
+Build settings that matter when adding code: `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`
+(mark pure helpers `nonisolated`), `SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY`
+(import frameworks explicitly), Swift language mode 5.
 
----
+## Releasing
 
-## 📜 License
+Follow [docs/release-checklist.md](docs/release-checklist.md). Listing copy and
+review notes are in [docs/app-store-listing.md](docs/app-store-listing.md); the
+privacy policy to host is [docs/privacy-policy.md](docs/privacy-policy.md).
 
-This project is open-source under the MIT license.
+## License
+
+MIT for the app source. Piano.sf2 is Fluid R3 GM (MIT, Frank Wen). Starter-library
+pieces are public-domain works.

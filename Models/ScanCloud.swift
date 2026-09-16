@@ -17,7 +17,12 @@ enum ScanCloudConfig {
     /// `URL(string: "https://cascade-scan.yourname.workers.dev")`.
     /// See server/cascade-scan-worker/README.md for the 5-minute deploy.
     /// nil = cloud mode off; the scan screen falls back to bring-your-own-key.
-    static let baseURL: URL? = nil
+    static let baseURL: URL? = URL(string: "https://cascade-scan.jaydfds.workers.dev")
+
+    /// Hosted privacy policy, linked from scan settings and required by App
+    /// Store Connect. Host docs/privacy-policy.md (GitHub Pages works), paste
+    /// the public URL here, and the link appears in the app automatically.
+    static let privacyPolicyURL: URL? = nil
 }
 
 enum ScanCloudError: LocalizedError {
@@ -123,6 +128,29 @@ final class ScanAccountManager {
         remainingScans = nil
         freeScans = nil
     }
+
+    /// Deletes the server-side account record (scan usage) and signs out.
+    /// Required by App Store guideline 5.1.1(v) for any app with sign-in.
+    func deleteAccount() async throws {
+        guard let baseURL = ScanCloudConfig.baseURL else { throw ScanCloudError.notConfigured }
+        guard let token = sessionToken else {
+            signOut()
+            return
+        }
+
+        struct DeleteResponse: Decodable { let deleted: Bool }
+
+        var request = URLRequest(url: baseURL.appending(path: "v1/account"))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "authorization")
+
+        do {
+            let _: DeleteResponse = try await ScanCloudAPI.send(request)
+        } catch ScanCloudError.sessionExpired {
+            // Nothing server-side to delete for a dead session.
+        }
+        signOut()
+    }
 }
 
 // MARK: - Cloud Recognizer
@@ -137,7 +165,7 @@ struct CascadeCloudRecognizer: SheetMusicRecognizer {
     /// pass produces MusicXML that fails the app's own parser validation.
     var quality: String = "standard"
 
-    nonisolated func recognize(pages: [Data]) async throws -> String {
+    nonisolated func recognize(pages: [Data], context: String?, jobID: String?) async throws -> String {
         struct RecognizeResponse: Decodable {
             let musicXML: String
             let provider: String
@@ -151,10 +179,12 @@ struct CascadeCloudRecognizer: SheetMusicRecognizer {
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "authorization")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "pages": pages.map { $0.base64EncodedString() },
             "quality": quality
         ]
+        if let context, !context.isEmpty { body["context"] = context }
+        if let jobID { body["jobId"] = jobID }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let response: RecognizeResponse = try await ScanCloudAPI.send(request)
@@ -205,6 +235,8 @@ enum ScanCloudAPI {
             throw ScanCloudError.sessionExpired
         case 402:
             throw ScanCloudError.outOfScans
+        case 503:
+            throw ScanCloudError.server("Scanning is temporarily unavailable. Please try again later.")
         case 422:
             if envelope?.error.code == "too_long" {
                 throw SheetMusicRecognitionError.truncatedResult

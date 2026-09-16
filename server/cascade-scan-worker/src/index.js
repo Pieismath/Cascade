@@ -1,14 +1,20 @@
 // cascade-scan — the backend for Cascade's sheet-music scanning.
 //
 // Endpoints (all JSON):
-//   POST /v1/auth/apple   {identityToken}      → {sessionToken, remainingScans, freeScans}
-//   GET  /v1/me           Bearer session       → {remainingScans, freeScans}
-//   POST /v1/recognize    Bearer session,
-//                         {pages:[b64jpeg], quality?} → {musicXML, provider, cached, remainingScans}
+//   POST   /v1/auth/apple   {identityToken}      → {sessionToken, remainingScans, freeScans}
+//   GET    /v1/me           Bearer session       → {remainingScans, freeScans}
+//   DELETE /v1/account      Bearer session       → {deleted: true}
+//   POST   /v1/recognize    Bearer session,
+//                           {pages:[b64jpeg], quality?, context?, jobId?}
+//                                                → {musicXML, provider, cached, remainingScans}
 //
 // The app's provider keys never leave this worker. Quota is per Apple account
 // (lifetime free scans, FREE_SCANS var). Identical page sets are cached by
 // content hash, and cache hits don't consume quota.
+//
+// Segmented jobs: the app splits long scores into several requests (system
+// crops in batches) and sends the same `jobId` with each. Only the first
+// request of a job consumes a scan; the rest ride along free for two hours.
 
 import {
   AuthError,
@@ -18,9 +24,14 @@ import {
 } from "./auth.js";
 import { ProviderError, recognize, looksLikeMusicXML } from "./providers.js";
 
-const MAX_PAGES = 6;
+const MAX_PAGES = 8;
 const MAX_PAGE_B64_CHARS = 2_800_000; // ~2MB of JPEG per page
+const MAX_CONTEXT_CHARS = 4000;
+const MAX_JOB_ID_CHARS = 64;
 const CACHE_TTL_SECONDS = 60 * 86400;
+const JOB_TTL_SECONDS = 2 * 3600;
+
+class ConfigError extends Error {}
 
 export default {
   async fetch(request, env, ctx) {
@@ -35,6 +46,9 @@ export default {
       if (request.method === "GET" && url.pathname === "/v1/me") {
         return await handleMe(request, env);
       }
+      if (request.method === "DELETE" && url.pathname === "/v1/account") {
+        return await handleDeleteAccount(request, env);
+      }
       if (request.method === "POST" && url.pathname === "/v1/recognize") {
         return await handleRecognize(request, env, ctx);
       }
@@ -42,6 +56,10 @@ export default {
     } catch (err) {
       if (err instanceof AuthError) {
         return error(401, "unauthorized", err.message);
+      }
+      if (err instanceof ConfigError) {
+        console.error("configuration:", err.message);
+        return error(503, "scan_unavailable", "Scanning is temporarily unavailable. Please try again later.");
       }
       console.error("unhandled:", err.stack ?? err);
       return error(500, "internal", "Something went wrong on the server.");
@@ -52,7 +70,7 @@ export default {
 // MARK: - Handlers
 
 async function handleAppleAuth(request, env) {
-  requireConfig(env);
+  requireSessionConfig(env);
   const body = await readJSON(request);
   if (!body?.identityToken) {
     return error(400, "bad_request", "identityToken is required.");
@@ -74,7 +92,7 @@ async function handleAppleAuth(request, env) {
 }
 
 async function handleMe(request, env) {
-  requireConfig(env);
+  requireSessionConfig(env);
   const session = await requireSession(request, env);
   const account = await loadAccount(env, session.sub, { createIfMissing: true });
   return json(200, {
@@ -83,13 +101,30 @@ async function handleMe(request, env) {
   });
 }
 
+/// App Store guideline 5.1.1(v): accounts must be deletable in-app. We hold
+/// nothing but the usage counter, so deletion is a single KV removal. The
+/// session token stays cryptographically valid until it expires, but any
+/// later request simply recreates a fresh zero-usage account, which is the
+/// same as a brand-new sign-in.
+async function handleDeleteAccount(request, env) {
+  requireSessionConfig(env);
+  const session = await requireSession(request, env);
+  await env.SCAN_KV.delete("u:" + session.sub);
+  return json(200, { deleted: true });
+}
+
 async function handleRecognize(request, env, ctx) {
-  requireConfig(env);
+  requireSessionConfig(env);
+  requireProviderConfig(env);
   const session = await requireSession(request, env);
 
   const body = await readJSON(request);
   const pages = body?.pages;
   const quality = body?.quality === "high" ? "high" : "standard";
+  const context = typeof body?.context === "string" ? body.context.slice(0, MAX_CONTEXT_CHARS) : "";
+  const jobId = typeof body?.jobId === "string" && /^[A-Za-z0-9-]{1,64}$/.test(body.jobId)
+    ? body.jobId
+    : null;
 
   if (!Array.isArray(pages) || pages.length === 0) {
     return error(400, "bad_request", "pages must be a non-empty array of base64 JPEG strings.");
@@ -101,8 +136,8 @@ async function handleRecognize(request, env, ctx) {
     return error(413, "page_too_large", "One of the pages is empty or too large.");
   }
 
-  // Cache: identical pages at the same quality tier → same result, no quota.
-  const cacheKey = "c:" + (await pagesDigest(pages, quality));
+  // Cache: identical pages + context at the same quality tier → same result, no quota.
+  const cacheKey = "c:" + (await pagesDigest(pages, quality, context));
   const cached = await env.SCAN_KV.get(cacheKey);
   if (cached) {
     const account = await loadAccount(env, session.sub, { createIfMissing: true });
@@ -116,13 +151,15 @@ async function handleRecognize(request, env, ctx) {
 
   // Quota check up front; consume only after a successful recognition.
   const account = await loadAccount(env, session.sub, { createIfMissing: true });
-  if (remaining(env, account) <= 0) {
+  const jobKey = jobId ? `j:${session.sub}:${jobId}` : null;
+  const jobAlreadyCharged = jobKey ? Boolean(await env.SCAN_KV.get(jobKey)) : false;
+  if (!jobAlreadyCharged && remaining(env, account) <= 0) {
     return error(402, "out_of_scans", "You've used all your free scans.");
   }
 
   let result;
   try {
-    result = await recognize(env, pages, quality);
+    result = await recognize(env, pages, quality, fetch, context);
   } catch (err) {
     if (err instanceof ProviderError && err.truncated) {
       return error(422, "too_long", "This piece is too long for one scan. Try fewer pages at a time.");
@@ -136,8 +173,13 @@ async function handleRecognize(request, env, ctx) {
     return error(422, "unreadable", "No readable music was found. Make sure the pages are sharp, well-lit, and right-side up.");
   }
 
-  account.used += 1;
-  await saveAccount(env, session.sub, account);
+  if (!jobAlreadyCharged) {
+    account.used += 1;
+    await saveAccount(env, session.sub, account);
+    if (jobKey) {
+      await env.SCAN_KV.put(jobKey, "1", { expirationTtl: JOB_TTL_SECONDS });
+    }
+  }
   ctx.waitUntil(
     env.SCAN_KV.put(cacheKey, result.musicXML, { expirationTtl: CACHE_TTL_SECONDS })
   );
@@ -186,18 +228,23 @@ async function requireSession(request, env) {
   return verifySessionToken(header.slice(7), env.SESSION_SECRET);
 }
 
-function requireConfig(env) {
+function requireSessionConfig(env) {
   const missing = ["SESSION_SECRET", "APPLE_BUNDLE_ID"].filter((name) => !env[name]);
   if (missing.length) {
     throw new Error(`worker is missing configuration: ${missing.join(", ")}`);
   }
-  // Either provider key works alone; Gemini-only is the free-tier mode.
+}
+
+/// Either provider key works alone; Gemini-only is the free-tier mode. A
+/// deployment with neither is reachable (sign-in works) but can't scan yet,
+/// so recognition reports "temporarily unavailable" instead of a 500.
+function requireProviderConfig(env) {
   if (!env.ANTHROPIC_API_KEY && !env.GEMINI_API_KEY) {
-    throw new Error("worker needs ANTHROPIC_API_KEY or GEMINI_API_KEY (at least one)");
+    throw new ConfigError("worker needs ANTHROPIC_API_KEY or GEMINI_API_KEY (at least one)");
   }
 }
 
-async function pagesDigest(pages, quality) {
+async function pagesDigest(pages, quality, context) {
   const encoder = new TextEncoder();
   const hashes = [];
   for (const page of pages) {
@@ -206,7 +253,7 @@ async function pagesDigest(pages, quality) {
   }
   const combined = await crypto.subtle.digest(
     "SHA-256",
-    encoder.encode(quality + "|" + hashes.join("|"))
+    encoder.encode(quality + "|" + hashes.join("|") + "|" + (context ?? ""))
   );
   return hex(combined);
 }

@@ -16,16 +16,14 @@ struct MyPianoInstructorApp: App {
     @State private var achievementManager = AchievementManager()
     @State private var themeManager = ThemeManager()
     @State private var notificationManager = NotificationManager()
-    // Persisted: only true when user explicitly checks "Don't show again"
-    @AppStorage("suppressOnboarding") private var suppressOnboarding = false
-
-    // Session-only: always starts as true so onboarding shows every launch
-    // (unless suppressed). Set to false when user dismisses onboarding.
-    @State private var showOnboarding = true
+    /// Persisted: onboarding is shown once, on first launch. (The legacy
+    /// "suppressOnboarding" key from earlier builds is honoured too.)
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("suppressOnboarding") private var legacySuppressOnboarding = false
 
     var body: some Scene {
         WindowGroup {
-            if !showOnboarding || suppressOnboarding {
+            if hasCompletedOnboarding || legacySuppressOnboarding {
                 RootTabView()
                     .environment(libraryVM)
                     .environment(statsManager)
@@ -39,10 +37,7 @@ struct MyPianoInstructorApp: App {
                         ])
                     }
             } else {
-                OnboardingView(
-                    suppressOnboarding: $suppressOnboarding,
-                    showOnboarding: $showOnboarding
-                )
+                OnboardingView(hasCompletedOnboarding: $hasCompletedOnboarding)
                 .environment(themeManager)
             }
         }
