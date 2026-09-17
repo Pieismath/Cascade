@@ -25,11 +25,23 @@ answers first ("anthropic" or "gemini"); the other one covers rate limits and
 outages automatically. Redeploy after editing: `npx wrangler deploy`.
 
 Rough cost per scan (one credit = up to 4 pages ≈ 3 requests of system crops,
-each ~4k input tokens in and ~6k MusicXML tokens out): Gemini 2.5 Flash
-($0.30/$2.50 per M) ≈ 3–6¢; Claude Sonnet ($2/$10 per M) ≈ 15–25¢. The
-per-credit caps (24 images / 6 requests) hold the worst case near 10¢ and 40¢
-respectively, so a $4.99 ten-scan pack keeps a wide margin either way. Set a
+each ~4k tokens in, ~6k MusicXML tokens out, plus a little thinking), at
+September 2026 prices:
+
+| model | price per M (in/out) | per scan |
+|---|---|---|
+| Gemini 3.6 / 3.8 Flash | $0.75 / $3.75 | ~8–12¢ |
+| Gemini 3.1 Flash-Lite | $0.25 / $1.50 | ~3–5¢ |
+| Claude Sonnet | $2 / $10 | ~20–25¢ |
+
+The per-credit caps (24 images / 6 requests) hold the worst case near double
+those figures, so a $4.99 ten-scan pack keeps a wide margin either way. Set a
 spend limit in whichever console you use.
+
+Model ids move: Google retired `gemini-2.5-flash` for new keys in 2026. If a
+scan fails with "no longer available", update `GEMINI_MODEL` /
+`GEMINI_MODEL_HIGH` in `wrangler.toml` from
+[the model list](https://ai.google.dev/gemini-api/docs/models) and redeploy.
 
 **Use a paid (billing-enabled) Google project if you go with Gemini.** On the
 free tier Google's terms say: content submitted is used "to provide, improve,

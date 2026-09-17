@@ -31,11 +31,11 @@ ANTHROPIC_MODEL = "claude-sonnet-5"
 # Retry tier for hard scans. Opus keeps worst-case cost inside pack margins;
 # Fable is better still but ~2× the price per retry.
 ANTHROPIC_MODEL_HIGH = "claude-opus-5"
-GEMINI_MODEL = "gemini-2.5-flash"
-# Model for the app's "try harder" retry. Left unset it retries on
-# GEMINI_MODEL, which is what a free-tier key can reach; on a paid project set
-# it to "gemini-2.5-pro" for better retries.
-# GEMINI_MODEL_HIGH = "gemini-2.5-pro"
+# Google retires model ids regularly — if a scan fails with "no longer
+# available", check ai.google.dev/gemini-api/docs/models and update these.
+GEMINI_MODEL = "gemini-3.6-flash"
+# The app's "try harder" retry. Same price as 3.6 and also on the free tier.
+GEMINI_MODEL_HIGH = "gemini-3.8-flash"
 # "anthropic" or "gemini" — which provider answers first when both keys are set.
 PRIMARY_PROVIDER = "gemini"
 

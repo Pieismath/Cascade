@@ -188,7 +188,7 @@ const ENV = {
   GEMINI_API_KEY: "g",
   ANTHROPIC_MODEL: "claude-sonnet-5",
   ANTHROPIC_MODEL_HIGH: "claude-fable-5",
-  GEMINI_MODEL: "gemini-2.5-flash",
+  GEMINI_MODEL: "gemini-3.6-flash",
 };
 
 await test("recognize uses anthropic when it succeeds", async () => {
@@ -223,12 +223,12 @@ await test("recognize falls back to gemini on retryable anthropic failure", asyn
     );
   };
   const result = await recognize(ENV, ["cGFnZQ=="], "standard", fetcher);
-  assert.equal(result.provider, "gemini/gemini-2.5-flash");
+  assert.equal(result.provider, "gemini/gemini-3.6-flash");
   assert.equal(result.musicXML, SCORE);
 });
 
 await test("PRIMARY_PROVIDER=gemini routes to gemini first, anthropic covers outages", async () => {
-  const geminiFirst = { ...ENV, PRIMARY_PROVIDER: "gemini", GEMINI_MODEL_HIGH: "gemini-2.5-pro" };
+  const geminiFirst = { ...ENV, PRIMARY_PROVIDER: "gemini", GEMINI_MODEL_HIGH: "gemini-3.8-flash" };
   const calls = [];
   const ok = new Response(
     JSON.stringify({ candidates: [{ content: { parts: [{ text: SCORE }] }, finishReason: "STOP" }] }),
@@ -238,14 +238,14 @@ await test("PRIMARY_PROVIDER=gemini routes to gemini first, anthropic covers out
     calls.push(String(url));
     return ok.clone();
   });
-  assert.equal(first.provider, "gemini/gemini-2.5-flash");
+  assert.equal(first.provider, "gemini/gemini-3.6-flash");
   assert.ok(calls[0].includes("generativelanguage.googleapis.com"));
 
   const high = await recognize(geminiFirst, ["cGFnZQ=="], "high", async (url) => {
-    assert.ok(String(url).includes("gemini-2.5-pro"), "high quality uses the stronger gemini model");
+    assert.ok(String(url).includes("gemini-3.8-flash"), "high quality uses the stronger gemini model");
     return ok.clone();
   });
-  assert.equal(high.provider, "gemini/gemini-2.5-pro");
+  assert.equal(high.provider, "gemini/gemini-3.8-flash");
 
   const fellBack = await recognize(geminiFirst, ["cGFnZQ=="], "standard", async (url) => {
     if (String(url).includes("generativelanguage.googleapis.com")) {
@@ -266,8 +266,37 @@ await test("gemini-only env runs entirely on gemini", async () => {
     );
   };
   const result = await recognize(geminiOnly, ["cGFnZQ=="], "standard", fetcher);
-  assert.equal(result.provider, "gemini/gemini-2.5-flash");
+  assert.equal(result.provider, "gemini/gemini-3.6-flash");
   assert.equal(result.musicXML, SCORE);
+});
+
+await test("gemini 3 requests keep thinking short; older models get no such field", async () => {
+  const ok = () =>
+    new Response(
+      JSON.stringify({ candidates: [{ content: { parts: [{ text: SCORE }] }, finishReason: "STOP" }] }),
+      { status: 200 }
+    );
+
+  let body;
+  await recognize({ GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-3.6-flash" }, ["cGFnZQ=="], "standard", async (_url, init) => {
+    body = JSON.parse(init.body);
+    return ok();
+  });
+  assert.equal(body.generationConfig.thinking_level, "low", "thinking tokens share the output budget");
+  assert.equal(body.generationConfig.maxOutputTokens, 24000);
+
+  await recognize({ GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-2.5-flash" }, ["cGFnZQ=="], "standard", async (_url, init) => {
+    body = JSON.parse(init.body);
+    return ok();
+  });
+  assert.equal(body.generationConfig.thinking_level, undefined);
+
+  await recognize(
+    { GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-3.6-flash", GEMINI_THINKING_LEVEL: "minimal" },
+    ["cGFnZQ=="], "standard",
+    async (_url, init) => { body = JSON.parse(init.body); return ok(); }
+  );
+  assert.equal(body.generationConfig.thinking_level, "minimal");
 });
 
 await test("recognize does not fall back on non-retryable errors", async () => {

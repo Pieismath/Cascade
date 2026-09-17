@@ -14,6 +14,11 @@ export class ProviderError extends Error {
 
 const MAX_OUTPUT_TOKENS = 24000;
 
+// Google retires model ids fairly often; these are the defaults as of
+// September 2026 and both are reachable on the free tier.
+const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
+const DEFAULT_GEMINI_MODEL_HIGH = "gemini-3.8-flash";
+
 // MARK: Prompts (kept in lockstep with the app's original prompt)
 
 export const SYSTEM_PROMPT =
@@ -161,7 +166,7 @@ export async function* sseEvents(body) {
 // MARK: Gemini (fallback)
 
 export async function callGemini(env, pages, model = null, fetcher = fetch, context = "") {
-  model = model || env.GEMINI_MODEL || "gemini-2.5-flash";
+  model = model || env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
   const parts = pages.map((b64) => ({
     inline_data: { mime_type: "image/jpeg", data: b64 },
   }));
@@ -177,7 +182,7 @@ export async function callGemini(env, pages, model = null, fetcher = fetch, cont
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: "user", parts }],
-      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 },
+      generationConfig: geminiGenerationConfig(env, model),
     }),
   });
 
@@ -197,6 +202,19 @@ export async function callGemini(env, pages, model = null, fetcher = fetch, cont
     throw new ProviderError("output truncated", { truncated: true });
   }
   return extractMusicXML(text);
+}
+
+/**
+ * Gemini 3 thinks by default and those tokens come out of the same budget as
+ * the answer, which truncates long scores. Keep thinking brief; 2.x models
+ * don't accept the field at all.
+ */
+function geminiGenerationConfig(env, model) {
+  const config = { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 };
+  if (/^gemini-[3-9]/.test(model)) {
+    config.thinking_level = env.GEMINI_THINKING_LEVEL || "low";
+  }
+  return config;
 }
 
 // MARK: Routing
@@ -228,8 +246,8 @@ function modelFor(env, provider, quality) {
       : env.ANTHROPIC_MODEL || "claude-sonnet-5";
   }
   return quality === "high"
-    ? env.GEMINI_MODEL_HIGH || env.GEMINI_MODEL || "gemini-2.5-flash"
-    : env.GEMINI_MODEL || "gemini-2.5-flash";
+    ? env.GEMINI_MODEL_HIGH || DEFAULT_GEMINI_MODEL_HIGH
+    : env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
 }
 
 export async function recognize(env, pages, quality, fetcher = fetch, context = "") {
