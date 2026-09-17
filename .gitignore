@@ -12,3 +12,6 @@ xcuserdata/
 server/cascade-scan-worker/node_modules/
 server/cascade-scan-worker/.wrangler/
 server/cascade-scan-worker/.dev.vars
+
+# Local scan tests
+server/cascade-scan-worker/scan-out*.musicxml
