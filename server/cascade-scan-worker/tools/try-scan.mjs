@@ -12,7 +12,8 @@
 //   --out path.musicxml           where to write the result (default: ./scan-out.musicxml)
 
 import { readFile, writeFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { recognize } from "../src/providers.js";
 
 const args = process.argv.slice(2);
@@ -20,12 +21,12 @@ const flag = (name, fallback = null) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? fallback : args[i + 1];
 };
-const files = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"));
+const here = dirname(fileURLToPath(import.meta.url));
+const given = args.filter((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--"));
 
-if (files.length === 0) {
-  console.error("usage: node tools/try-scan.mjs <page.png|page.jpg> [more pages…] [--provider gemini|anthropic] [--quality standard|high] [--out file.musicxml]");
-  process.exit(1);
-}
+// No page given: use the bundled sample, found relative to this script so it
+// works from any directory.
+const files = given.length > 0 ? given : [resolve(here, "../../../Resources/Sample-FurElise-1.png")];
 
 const env = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
