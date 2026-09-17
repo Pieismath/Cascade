@@ -42,6 +42,7 @@ struct StatsView: View {
             }
             .padding(.horizontal, 20)
         }
+        .statusBarScrim()
         .stageBackground()
         .navigationBarHidden(true)
         .onAppear {

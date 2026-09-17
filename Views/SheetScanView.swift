@@ -2,55 +2,45 @@
 //  SheetScanView.swift
 //  MyPianoInstructor
 //
-//  The scan-to-play flow: capture sheet music with the document camera or
-//  import a PDF/images, send the pages through optical music recognition,
-//  preview the transcription, then save it to the library and/or export a
-//  falling-note video straight away.
+//  The scan-to-play flow. Home hands it pages (from the camera, Photos, or
+//  Files, or a bundled sample); this screen converts them into notes,
+//  previews the result, then saves it to the library and/or exports a video.
 //
 
 import SwiftUI
-import VisionKit
-import PDFKit
+import PhotosUI
 import UniformTypeIdentifiers
-import AuthenticationServices
-import StoreKit
-
-/// Bring-your-own-key scanning is a developer convenience. Release builds are
-/// cloud-only so no customer is ever asked for an API key.
-private var ownKeyAllowed: Bool {
-    #if DEBUG
-    return true
-    #else
-    return false
-    #endif
-}
 
 struct SheetScanView: View {
     @Environment(SongLibraryViewModel.self) var libraryVM
+    @Environment(ScanAccountManager.self) private var account
+    @Environment(ScanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     @Binding var selectedSong: Song?
     @Binding var tabSelection: Int
 
     private enum Phase {
-        case collectingPages
+        case review
         case recognizing
         case preview(RecognizedScore)
     }
 
-    @State private var phase: Phase = .collectingPages
-    @State private var pages: [UIImage] = []
-    @State private var songTitle = ""
-    @State private var progressText = "Reading the notation…"
-    /// Set while the loaded pages are a bundled sample; Convert then uses the
+    @State private var phase: Phase = .review
+    @State private var pages: [UIImage]
+    @State private var songTitle: String
+    /// Set while the pages are a bundled sample; converting then uses the
     /// prepared transcription instead of the network.
-    @State private var activeSample: SampleScan? = nil
+    @State private var activeSample: SampleScan?
+    @State private var progressText = "Reading the notation"
 
     @State private var showCamera = false
+    @State private var showPhotoPicker = false
+    @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showFileImporter = false
-    @State private var showSettings = false
     @State private var showPrivacyInfo = false
     @State private var errorMessage: String? = nil
+    @State private var infoMessage: String? = nil
     @State private var recognitionTask: Task<Void, Never>? = nil
 
     // Export straight from the preview
@@ -59,28 +49,17 @@ struct SheetScanView: View {
     @State private var showExportError = false
     @State private var exportedVideoURL: URL? = nil
 
-    @State private var settings = ScanSettings.shared
-    @State private var account: ScanAccountManager
-    @State private var store: ScanStore
-    @State private var infoMessage: String? = nil
-
-    init(selectedSong: Binding<Song?>, tabSelection: Binding<Int>) {
+    init(session: ScanSession, selectedSong: Binding<Song?>, tabSelection: Binding<Int>) {
         _selectedSong = selectedSong
         _tabSelection = tabSelection
-        let account = ScanAccountManager()
-        _account = State(initialValue: account)
-        _store = State(initialValue: ScanStore(account: account))
+        _pages = State(initialValue: session.pages)
+        _songTitle = State(initialValue: session.title)
+        _activeSample = State(initialValue: session.sample)
     }
 
-    private var cameraAvailable: Bool {
-        VNDocumentCameraViewController.isSupported
-    }
+    private var cloudConfigured: Bool { ScanCloudConfig.baseURL != nil }
 
-    private var cloudConfigured: Bool {
-        ScanCloudConfig.baseURL != nil
-    }
-
-    /// Credits this scan will cost (1 per 4 pages by default).
+    /// Credits this scan costs (one per few pages).
     private var creditsNeeded: Int {
         account.creditsNeeded(forPages: max(1, pages.count))
     }
@@ -89,22 +68,16 @@ struct SheetScanView: View {
         (account.remainingScans ?? 1) >= creditsNeeded
     }
 
-    /// Cloud mode (signed in, enough credits) or a developer key — either unlocks Convert.
-    /// Bundled samples always work: they don't touch the network.
-    private var canRecognize: Bool {
-        if activeSample != nil { return true }
-        if cloudConfigured && account.isSignedIn && hasEnoughCredits {
-            return true
-        }
-        return ownKeyAllowed && settings.hasAPIKey
+    private var tooManyPages: Bool {
+        activeSample == nil && pages.count > ScanCloudConfig.maxPagesPerScan
     }
 
     var body: some View {
         NavigationStack {
             Group {
                 switch phase {
-                case .collectingPages:
-                    collectPagesView
+                case .review:
+                    reviewView
                 case .recognizing:
                     recognizingView
                 case .preview(let score):
@@ -114,12 +87,12 @@ struct SheetScanView: View {
                         isSample: activeSample != nil,
                         onSave: { save(score) },
                         onExport: { saveAndExport(score) },
-                        onRetry: { phase = .collectingPages }
+                        onRetry: { phase = .review }
                     )
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .stageBackground()
-            .navigationTitle("Scan Sheet Music")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -129,34 +102,37 @@ struct SheetScanView: View {
                     }
                     .disabled(exporter.isExporting)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        CascadeIconView(.gear, size: 18, color: Brand.textPrimary)
-                    }
-                    .buttonStyle(IconButtonStyle())
-                    .accessibilityLabel("Scan settings")
-                }
             }
         }
         .fullScreenCover(isPresented: $showCamera) {
-            DocumentCameraView { scannedPages in
-                if activeSample != nil { pages.removeAll(); activeSample = nil }
-                pages.append(contentsOf: scannedPages)
+            DocumentCameraView { scanned in
+                pages.append(contentsOf: scanned)
             }
             .ignoresSafeArea()
         }
-        .fileImporter(
-            isPresented: $showFileImporter,
-            allowedContentTypes: [.pdf, .image],
-            allowsMultipleSelection: true
-        ) { result in
-            importFiles(result)
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoSelection,
+                      maxSelectionCount: ScanCloudConfig.maxPagesPerScan, matching: .images)
+        .onChange(of: photoSelection) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                pages.append(contentsOf: await ScanPageLoader.pages(from: items))
+                photoSelection = []
+            }
         }
-        .sheet(isPresented: $showSettings) {
-            ScanSettingsView(account: account, store: store)
+        .fileImporter(isPresented: $showFileImporter, allowedContentTypes: [.pdf, .image], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls):
+                let loaded = ScanPageLoader.pages(from: urls)
+                pages.append(contentsOf: loaded.pages)
+                if songTitle.isEmpty { songTitle = loaded.title }
+                if !loaded.unreadable.isEmpty {
+                    errorMessage = "Couldn't read \(loaded.unreadable.joined(separator: ", "))."
+                }
+            case .failure(let error):
+                errorMessage = error.localizedDescription
+            }
         }
+        .sheet(isPresented: $showPrivacyInfo) { ScanPrivacySheet() }
         .sheet(isPresented: $showExportSheet) {
             ExportProgressSheet(progress: exporter.exportProgress)
                 .interactiveDismissDisabled(exporter.isExporting)
@@ -171,10 +147,7 @@ struct SheetScanView: View {
             Text("Could not export the video. The song is saved in your library — try exporting again from the player.")
         }
         .task {
-            await account.refresh()
-            // Purchases whose redemption was interrupted are retried here.
-            let granted = await store.redeemPending()
-            if granted > 0 { infoMessage = "Added \(granted) scan\(granted == 1 ? "" : "s") from a previous purchase." }
+            if activeSample == nil { await account.refresh() }
         }
         .alert("Scans Added", isPresented: Binding(
             get: { infoMessage != nil },
@@ -194,445 +167,238 @@ struct SheetScanView: View {
         }
     }
 
-    // MARK: - Phase 1: Collect Pages
+    // MARK: - Review
 
-    private var collectPagesView: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 22) {
-
-                if activeSample != nil {
-                    sampleLoadedNote
-                } else if cloudConfigured {
-                    if !account.isSignedIn {
-                        signInCard
-                    } else if !hasEnoughCredits {
-                        ScanPacksCard(store: store, account: account, creditsNeeded: creditsNeeded,
-                                      onGranted: { infoMessage = $0 }, onError: { errorMessage = $0 })
-                    } else {
-                        scansRemainingPill
+    private var reviewView: some View {
+        VStack(spacing: 0) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 18) {
+                    pageStrip
+                    VStack(spacing: 6) {
+                        Text(activeSample?.title ?? (pages.isEmpty ? "No pages yet" : "\(pages.count) page\(pages.count == 1 ? "" : "s")"))
+                            .font(CascadeFont.display(28))
+                            .foregroundStyle(Brand.textPrimary)
+                            .multilineTextAlignment(.center)
+                        if let sample = activeSample {
+                            Text("Sample scan · \(sample.composer)")
+                                .font(.subheadline)
+                                .foregroundStyle(Brand.textSecondary)
+                        }
                     }
-                } else if ownKeyAllowed && !settings.hasAPIKey {
-                    apiKeyPrompt
-                } else if !ownKeyAllowed {
-                    unavailableCard
+                    .padding(.horizontal, 20)
                 }
-
-                if pages.isEmpty {
-                    // Two big source tiles
-                    HStack(spacing: 12) {
-                        sourceTile(glyph: .camera, title: "Camera", subtitle: cameraAvailable ? "Photograph pages" : "Not on this device",
-                                   tint: Brand.teal, disabled: !cameraAvailable) { showCamera = true }
-                        sourceTile(glyph: .pdf, title: "PDF or photo", subtitle: "From Files",
-                                   tint: Brand.amber, disabled: false) { showFileImporter = true }
-                    }
-
-                    samplesSection
-                } else {
-                    pagesReady
-                }
-
-                footnote
-
-                Spacer(minLength: 20)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
+
+            convertPanel
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+                .background(alignment: .top) {
+                    LinearGradient(colors: [Brand.ink.opacity(0), Brand.ink], startPoint: .top, endPoint: .init(x: 0.5, y: 0.25))
+                        .padding(.top, -28)
+                        .ignoresSafeArea()
+                }
         }
-        .sheet(isPresented: $showPrivacyInfo) { privacySheet }
     }
 
-    private func sourceTile(glyph: CascadeGlyph, title: String, subtitle: String, tint: Color, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 14) {
-                IconBadge(glyph: glyph, tint: tint, diameter: 48)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Brand.textPrimary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(Brand.textSecondary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .cascadeCard(padding: 16, radius: 22)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.5 : 1)
-        .accessibilityLabel(title == "Camera" ? "Scan with Camera" : "Import PDF or Images")
-    }
-
-    /// Pages loaded: thumbnails + the one button that matters.
-    private var pagesReady: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("\(pages.count) page\(pages.count == 1 ? "" : "s") ready")
-                    .font(CascadeFont.display(22))
-                    .foregroundStyle(Brand.textPrimary)
-                Spacer()
-                Button("Clear") {
-                    pages.removeAll()
-                    activeSample = nil
-                }
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(Brand.textSecondary)
-            }
-
+    private var pageStrip: some View {
+        GeometryReader { geo in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(pages.indices, id: \.self) { i in
-                        ZStack(alignment: .topTrailing) {
-                            Image(uiImage: pages[i])
-                                .resizable()
-                                .scaledToFit()
-                                .frame(height: 150)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
+                pageRow
+                    .frame(minWidth: geo.size.width)
+            }
+        }
+        .frame(height: 364)
+    }
+
+    private var pageRow: some View {
+        HStack(spacing: 14) {
+            ForEach(pages.indices, id: \.self) { i in
+                Image(uiImage: pages[i])
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 340)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .shadow(color: .black.opacity(0.45), radius: 16, y: 8)
+                    .overlay(alignment: .bottomLeading) {
+                        if pages.count > 1 {
+                            Text("\(i + 1)")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(.black.opacity(0.6), in: Circle())
+                                .padding(8)
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if activeSample == nil {
                             Button {
-                                pages.remove(at: i)
-                                activeSample = nil
+                                withAnimation(.snappy) { _ = pages.remove(at: i) }
                             } label: {
-                                CascadeIconView(.xmark, size: 12, color: .white)
-                                    .frame(width: 24, height: 24)
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 26, height: 26)
                                     .background(.black.opacity(0.6), in: Circle())
                             }
-                            .padding(5)
+                            .padding(8)
                             .accessibilityLabel("Remove page \(i + 1)")
                         }
                     }
-                    if activeSample == nil {
-                        Button { showCamera = true } label: {
-                            VStack(spacing: 6) {
-                                CascadeIconView(.plus, size: 18, color: Brand.textSecondary)
-                                Text("Add page").font(.caption).foregroundStyle(Brand.textSecondary)
-                            }
-                            .frame(width: 100, height: 150)
-                            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.hairline, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!cameraAvailable)
-                    }
-                }
             }
-
-            if activeSample == nil, pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan {
-                Text("Scan up to \(ClaudeSheetMusicRecognizer.maxPagesPerScan) pages at a time.")
-                    .font(.caption)
-                    .foregroundStyle(Brand.amber)
+            if activeSample == nil {
+                addPageTile
             }
-            if activeSample == nil, creditsNeeded > 1, account.isSignedIn {
-                Text("This scan uses \(creditsNeeded) credits (\(account.pagesPerCredit) pages each).")
-                    .font(.caption)
-                    .foregroundStyle(Brand.textSecondary)
-            }
-
-            Button {
-                startRecognition()
-            } label: {
-                HStack(spacing: 8) {
-                    CascadeIconView(.sparkle, size: 16, color: Brand.ink)
-                    Text(activeSample == nil ? "Convert to falling notes" : "Convert sample (free)")
-                }
-            }
-            .buttonStyle(.cascadePrimary)
-            .opacity(canRecognize ? 1 : 0.45)
-            .disabled(!canRecognize || (activeSample == nil && pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan))
-            .accessibilityLabel(activeSample == nil ? "Convert to Falling Notes" : "Convert Sample")
         }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
     }
 
-    /// One quiet line; the full explanation lives behind it.
-    private var footnote: some View {
-        Button { showPrivacyInfo = true } label: {
-            HStack(spacing: 6) {
-                CascadeIconView(.lock, size: 12, color: Brand.textTertiary)
-                Text("Pages are sent securely to Cascade's scan service and not stored.")
+    private var addPageTile: some View {
+        Menu {
+            if DocumentCameraView.isAvailable {
+                Button { showCamera = true } label: { Label("Camera", systemImage: "camera") }
+            }
+            Button { showPhotoPicker = true } label: { Label("Photos", systemImage: "photo.on.rectangle") }
+            Button { showFileImporter = true } label: { Label("Files", systemImage: "folder") }
+        } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .semibold))
+                Text("Add page")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+            }
+            .foregroundStyle(Brand.textSecondary)
+            .frame(width: pages.isEmpty ? 240 : 130, height: 340)
+            .background(Brand.surface.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Brand.hairline, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+            )
+        }
+        .accessibilityLabel("Add page")
+    }
+
+    /// Status line, the one action that matters right now, and the privacy note.
+    private var convertPanel: some View {
+        VStack(spacing: 12) {
+            statusLine
+
+            if activeSample != nil {
+                convertButton(title: "Make falling notes")
+                    .accessibilityLabel("Convert Sample")
+            } else if !cloudConfigured {
+                convertButton(title: "Scanning unavailable")
+                    .disabled(true)
+                    .opacity(0.45)
+            } else if !account.isSignedIn {
+                ScanSignInButton(onError: { errorMessage = $0 })
+            } else if !hasEnoughCredits {
+                ScanPacksList(store: store, onGranted: { infoMessage = $0 }, onError: { errorMessage = $0 })
+                Button("Restore purchases") {
+                    Task {
+                        let granted = await store.redeemPending()
+                        if granted > 0 { infoMessage = "Added \(granted) scan\(granted == 1 ? "" : "s")." }
+                    }
+                }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(Brand.textSecondary)
+            } else {
+                convertButton(title: "Make falling notes")
+                    .disabled(pages.isEmpty || tooManyPages)
+                    .opacity(pages.isEmpty || tooManyPages ? 0.45 : 1)
+                    .accessibilityLabel("Convert to Falling Notes")
+            }
+
+            if activeSample == nil {
+                Button { showPrivacyInfo = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "lock.fill").font(.system(size: 9))
+                        Text("Uploaded securely, never kept.")
+                        Text("How it works").bold()
+                    }
                     .font(.caption2)
                     .foregroundStyle(Brand.textTertiary)
-                Text("Details")
-                    .font(.caption2).bold()
-                    .foregroundStyle(Brand.textSecondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 4)
-    }
-
-    private var privacySheet: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("How scanning works")
-                        .font(CascadeFont.display(28))
-                        .foregroundStyle(Brand.textPrimary)
-                    Text("When you tap Convert, the page images are sent over an encrypted connection to Cascade's scan service, where an AI model reads the notation and returns the notes. Pages are processed in memory and not stored, and are never used to identify you. Sign in with Apple gives us only an anonymous ID.")
-                        .font(.body)
-                        .foregroundStyle(Brand.textSecondary)
-                    Text("Everything else in Cascade works offline. Your library, practice history, and exported videos stay on this device.")
-                        .font(.body)
-                        .foregroundStyle(Brand.textSecondary)
-                    if let url = ScanCloudConfig.privacyPolicyURL {
-                        Link("Read the privacy policy", destination: url)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    }
                 }
-                .padding(20)
-            }
-            .stageBackground()
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showPrivacyInfo = false }.fontWeight(.semibold)
-                }
+                .buttonStyle(.plain)
             }
         }
-        .presentationDetents([.medium, .large])
     }
 
-    // MARK: - Samples
-
-    /// "Try it" scans: bundled pages with a prepared result — instant, free,
-    /// no sign-in — so people see the whole flow before spending anything.
-    private var samplesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                CascadeIconView(.sparkle, size: 14, color: Brand.teal)
-                Text("Or try a sample — instant and free").eyebrowStyle(Brand.teal)
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(SampleScan.all) { sample in
-                        Button {
-                            loadSample(sample)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                if let thumb = sample.thumbnail() {
-                                    Image(uiImage: thumb)
-                                        .resizable()
-                                        .scaledToFill()
-                                        .frame(width: 104, height: 132, alignment: .top)
-                                        .clipped()
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
-                                }
-                                Text(sample.title)
-                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Brand.textPrimary)
-                                    .lineLimit(1)
-                                Text(sample.composer)
-                                    .font(.caption2)
-                                    .foregroundStyle(Brand.textTertiary)
-                            }
-                            .frame(width: 104, alignment: .leading)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Sample: \(sample.title)")
-                    }
-                }
+    private func convertButton(title: String) -> some View {
+        Button {
+            startRecognition()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                Text(title)
             }
         }
-        .padding(.top, 6)
+        .buttonStyle(.cascadePrimary)
     }
 
-    private var sampleLoadedNote: some View {
-        HStack(spacing: 8) {
-            CascadeIconView(.sparkle, size: 14, color: Brand.teal)
-            Text("Sample loaded — converting is instant and free.")
-                .font(.caption).bold()
-            Spacer()
-        }
-        .padding(10)
-        .background(AppTheme.accent.opacity(0.08))
-        .cornerRadius(10)
-    }
-
-    private func loadSample(_ sample: SampleScan) {
-        let images = sample.loadPages()
-        guard !images.isEmpty else {
-            errorMessage = "The sample pages are missing from this build."
-            return
-        }
-        pages = images
-        songTitle = sample.title
-        activeSample = sample
-    }
-
-    // MARK: - Cards
-
-    private var signInCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(freeScanHeadline)
-                .font(CascadeFont.display(22))
-                .foregroundStyle(Brand.textPrimary)
-            Text("Sign in to scan your own pages. Anonymous ID only — no name, no email.")
-                .font(.caption)
-                .foregroundStyle(Brand.textSecondary)
-            SignInWithAppleButton(.signIn) { request in
-                request.requestedScopes = []   // identity only — no name or email
-            } onCompletion: { result in
-                Task {
-                    switch result {
-                    case .success(let authorization):
-                        do {
-                            try await account.signIn(with: authorization)
-                        } catch {
-                            errorMessage = error.localizedDescription
-                        }
-                    case .failure(let error):
-                        // User-cancelled sign-in isn't an error worth showing
-                        if (error as? ASAuthorizationError)?.code != .canceled {
-                            errorMessage = error.localizedDescription
-                        }
-                    }
-                }
+    private var statusLine: some View {
+        let (text, tint): (String, Color) = {
+            if activeSample != nil { return ("Free · converts instantly", Brand.teal) }
+            if tooManyPages { return ("Up to \(ScanCloudConfig.maxPagesPerScan) pages per scan", Brand.amber) }
+            if !cloudConfigured { return ("Scanning isn't available in this build", Brand.amber) }
+            if !account.isSignedIn {
+                let free = account.freeScans ?? 1
+                return (free == 1 ? "Your first scan is free" : "Your first \(free) scans are free", Brand.teal)
             }
-            .signInWithAppleButtonStyle(.black)
-            .frame(height: 46)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.accent.opacity(0.08))
-        .cornerRadius(12)
-    }
-
-    private var freeScanHeadline: String {
-        let free = account.freeScans ?? 1
-        return free == 1 ? "Get a free scan" : "Get \(free) free scans"
-    }
-
-    private var scansRemainingPill: some View {
-        let remaining = account.remainingScans ?? 0
-        let costNote = pages.count > 4 ? " · this scan uses \(creditsNeeded)" : ""
-        return HStack(spacing: 8) {
-            CascadeIconView(.check, size: 14, color: Brand.mint)
-            Text("\(remaining) scan\(remaining == 1 ? "" : "s") left\(costNote)")
-                .font(.caption).bold()
-            Spacer()
-            Button("Get more") { showSettings = true }
-                .font(.caption).bold()
-        }
-        .padding(10)
-        .background(Color.green.opacity(0.1))
-        .cornerRadius(10)
-    }
-
-    private var unavailableCard: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "wifi.exclamationmark")
-                .foregroundColor(.orange)
-            Text("Scanning isn't available in this build.")
-                .font(.subheadline).bold()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(12)
-    }
-
-    private var apiKeyPrompt: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "key.fill")
-                .foregroundColor(.orange)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Developer build: add an Anthropic API key to enable scanning")
-                    .font(.subheadline).bold()
-                Text("Recognition runs on the Claude vision API. Your key is stored securely in the Keychain and used only for your own scans.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Button("Enter API Key…") { showSettings = true }
-                    .font(.caption).bold()
+            let remaining = account.remainingScans ?? 0
+            if !hasEnoughCredits {
+                return (remaining == 0
+                        ? "You're out of scans"
+                        : "This scan needs \(creditsNeeded) · you have \(remaining)", Brand.amber)
             }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(12)
+            return ("Uses \(creditsNeeded) of your \(remaining) scan\(remaining == 1 ? "" : "s")", Brand.textSecondary)
+        }()
+        return Text(text)
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .foregroundStyle(tint)
     }
 
-    // MARK: - Phase 2: Recognizing
+    // MARK: - Recognizing
 
     private var recognizingView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 30) {
             Spacer()
-            ProgressView()
-                .controlSize(.large)
-            Text(progressText)
-                .font(.headline)
-                .contentTransition(.numericText())
-                .animation(.default, value: progressText)
-            Text("Transcribing \(pages.count) page\(pages.count == 1 ? "" : "s") of sheet music into playable notes. Longer pieces are read in several parts; this usually takes a minute or two.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Button("Cancel") {
+            ScanningPagesView(pages: pages)
+            VStack(spacing: 8) {
+                Text(progressText)
+                    .font(CascadeFont.display(24))
+                    .foregroundStyle(Brand.textPrimary)
+                    .contentTransition(.opacity)
+                    .animation(.default, value: progressText)
+                Text(activeSample != nil ? "Sample scan" : "Usually a minute or two")
+                    .font(.subheadline)
+                    .foregroundStyle(Brand.textSecondary)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 32)
+            Spacer()
+            Button("Stop") {
                 recognitionTask?.cancel()
-                phase = .collectingPages
+                phase = .review
             }
-            .padding(.top, 10)
-            Spacer()
-        }
-    }
-
-    // MARK: - File Import (PDF + images)
-
-    private func importFiles(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result else {
-            if case .failure(let error) = result { errorMessage = "Import failed: \(error.localizedDescription)" }
-            return
-        }
-        if activeSample != nil { pages.removeAll(); activeSample = nil }
-
-        for url in urls {
-            let gotAccess = url.startAccessingSecurityScopedResource()
-            defer { if gotAccess { url.stopAccessingSecurityScopedResource() } }
-
-            if url.pathExtension.lowercased() == "pdf" {
-                guard let document = PDFDocument(url: url) else {
-                    errorMessage = "Could not open the PDF."
-                    continue
-                }
-                for pageIndex in 0..<document.pageCount {
-                    guard let page = document.page(at: pageIndex) else { continue }
-                    let bounds = page.bounds(for: .mediaBox)
-                    let longest = max(bounds.width, bounds.height)
-                    // Rasterise larger than the upload size so system crops
-                    // keep full resolution after splitting.
-                    let target = SheetPagePrep.maxDimension * 2
-                    let scale = longest > 0 ? target / longest : 1
-                    let size = CGSize(width: bounds.width * scale, height: bounds.height * scale)
-                    pages.append(page.thumbnail(of: size, for: .mediaBox))
-                }
-                if songTitle.isEmpty {
-                    songTitle = url.deletingPathExtension().lastPathComponent
-                        .replacingOccurrences(of: "_", with: " ")
-                        .replacingOccurrences(of: "-", with: " ")
-                }
-            } else if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
-                pages.append(image)
-            } else {
-                errorMessage = "Could not read \(url.lastPathComponent)."
-            }
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .foregroundStyle(Brand.textSecondary)
+            .padding(.bottom, 12)
         }
     }
 
     // MARK: - Recognition
 
-    /// Cloud recognizer when signed in with scans left; otherwise a developer
-    /// key. `quality` only matters on the cloud path.
     private func makeRecognizer(quality: String) -> SheetMusicRecognizer? {
-        if let baseURL = ScanCloudConfig.baseURL,
-           account.isSignedIn,
-           let token = account.sessionToken,
-           (account.remainingScans ?? 1) > 0 {
-            return CascadeCloudRecognizer(baseURL: baseURL, sessionToken: token, quality: quality)
-        }
-        if ownKeyAllowed && settings.hasAPIKey {
-            return settings.makeRecognizer()
-        }
-        return nil
+        guard let baseURL = ScanCloudConfig.baseURL,
+              account.isSignedIn,
+              let token = account.sessionToken,
+              (account.remainingScans ?? 1) > 0 else { return nil }
+        return CascadeCloudRecognizer(baseURL: baseURL, sessionToken: token, quality: quality)
     }
 
     private func startRecognition() {
@@ -641,23 +407,18 @@ struct SheetScanView: View {
             return
         }
         guard let recognizer = makeRecognizer(quality: "standard") else {
-            if cloudConfigured && account.isSignedIn && !hasEnoughCredits {
-                errorMessage = "This scan needs \(creditsNeeded) scan credit\(creditsNeeded == 1 ? "" : "s"). Get a scan pack to continue."
-            } else {
-                errorMessage = cloudConfigured
-                    ? "Sign in to scan."
-                    : SheetMusicRecognitionError.missingAPIKey.localizedDescription
-            }
+            errorMessage = account.isSignedIn
+                ? "This scan needs \(creditsNeeded) scan\(creditsNeeded == 1 ? "" : "s"). Get a scan pack to continue."
+                : "Sign in to scan."
             return
         }
 
-        let usingCloud = recognizer is CascadeCloudRecognizer
         let snapshot = pages
-        progressText = "Preparing pages…"
+        progressText = "Preparing pages"
         phase = .recognizing
 
         let report: ScoreTranscriptionJob.Progress = { text in
-            Task { @MainActor in progressText = text }
+            Task { @MainActor in progressText = text.trimmingCharacters(in: CharacterSet(charactersIn: "…")) }
         }
 
         let jobID = UUID().uuidString.lowercased()
@@ -670,23 +431,22 @@ struct SheetScanView: View {
                     job.jobID = jobID
                     score = try await job.run(progress: report)
 
-                    // Rhythm badly off → one whole-page pass on the stronger
-                    // model (cloud only; rides on the same free scan).
-                    if usingCloud, score.measureReport.suspectFraction > 0.25,
+                    // Rhythm badly off → one whole-page pass at higher quality,
+                    // on the same scan credit.
+                    if score.measureReport.suspectFraction > 0.25,
                        let retry = makeRecognizer(quality: "high") {
-                        progressText = "Double-checking tricky passages…"
+                        progressText = "Double-checking tricky passages"
                         var second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
-                        second.jobID = job.jobID   // same scan, same single credit
+                        second.jobID = job.jobID
                         if let better = try? await second.run(progress: report),
                            better.measureReport.suspectFraction < score.measureReport.suspectFraction {
                             score = better
                         }
                     }
                 } catch let err as SheetMusicRecognitionError where err.isEscalatable {
-                    // Pass 1 produced nothing usable — try whole pages, on the
-                    // stronger model when the cloud offers one.
-                    let retry = (usingCloud ? makeRecognizer(quality: "high") : nil) ?? recognizer
-                    progressText = "Trying again with full pages…"
+                    // Pass 1 produced nothing usable — try whole pages at higher quality.
+                    let retry = makeRecognizer(quality: "high") ?? recognizer
+                    progressText = "Trying again with full pages"
                     var second = ScoreTranscriptionJob(recognizer: retry, pages: snapshot, strategy: .wholePages(perBatch: 3))
                     second.jobID = jobID
                     score = try await second.run(progress: report)
@@ -696,15 +456,15 @@ struct SheetScanView: View {
                     songTitle = "Scanned Music \(Date().formatted(date: .abbreviated, time: .omitted))"
                 }
                 phase = .preview(score)
-                if usingCloud { await account.refresh() }
+                await account.refresh()
             } catch is CancellationError {
                 // User backed out — no error surface needed
             } catch ScanCloudError.sessionExpired {
                 account.signOut()
-                phase = .collectingPages
+                phase = .review
                 errorMessage = ScanCloudError.sessionExpired.localizedDescription
             } catch {
-                phase = .collectingPages
+                phase = .review
                 errorMessage = error.localizedDescription
             }
         }
@@ -718,17 +478,17 @@ struct SheetScanView: View {
             errorMessage = "The sample transcription is missing from this build."
             return
         }
-        progressText = "Reading the notation… (sample)"
+        progressText = "Reading the notation"
         phase = .recognizing
         recognitionTask = Task {
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            try? await Task.sleep(for: .milliseconds(1600))
             guard !Task.isCancelled else { return }
             do {
                 let score = try SheetMusicValidator.validate(musicXML: xml)
                 if songTitle.isEmpty { songTitle = sample.title }
                 phase = .preview(score)
             } catch {
-                phase = .collectingPages
+                phase = .review
                 errorMessage = error.localizedDescription
             }
         }
@@ -776,6 +536,53 @@ struct SheetScanView: View {
     }
 }
 
+// MARK: - Reading animation
+
+/// The pages stacked, with a light sweeping down the top one while the notes
+/// are read.
+private struct ScanningPagesView: View {
+    let pages: [UIImage]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let width: CGFloat = 230
+        let height: CGFloat = 300
+        ZStack {
+            ForEach(Array(pages.prefix(3).enumerated().reversed()), id: \.offset) { index, page in
+                Image(uiImage: page)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: width, height: height, alignment: .top)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .shadow(color: .black.opacity(0.4), radius: 14, y: 8)
+                    .rotationEffect(.degrees(Double(index) * 3.5))
+                    .offset(x: CGFloat(index) * 10, y: CGFloat(index) * -6)
+                    .opacity(index == 0 ? 1 : 0.7)
+            }
+
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: reduceMotion)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let phase = reduceMotion ? 0.5 : (sin(t * 1.6) + 1) / 2
+                ZStack(alignment: .top) {
+                    LinearGradient(colors: [Brand.teal.opacity(0), Brand.teal.opacity(0.28)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 70)
+                        .offset(y: -68)
+                    Capsule()
+                        .fill(Brand.teal)
+                        .frame(height: 3)
+                        .shadow(color: Brand.teal, radius: 8)
+                }
+                .frame(width: width, height: 2, alignment: .top)
+                .offset(y: (phase - 0.5) * (height - 20))
+            }
+            .frame(width: width, height: height)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Preview Phase View
 
 private struct ScanPreviewView: View {
@@ -794,7 +601,9 @@ private struct ScanPreviewView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        CascadeIconView(.check, size: 13, color: Brand.mint)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Brand.mint)
                         Text(isSample ? "Sample transcription" : "Transcription ready").eyebrowStyle(Brand.mint)
                     }
                     TextField("Song title", text: $songTitle)
@@ -811,29 +620,23 @@ private struct ScanPreviewView: View {
                 }
 
                 Button(action: onSave) {
-                    HStack(spacing: 8) { CascadeIconView(.play, size: 16, color: Brand.ink); Text("Add to library & play") }
+                    HStack(spacing: 8) { Image(systemName: "play.fill"); Text("Add to library & play") }
                 }
                 .buttonStyle(.cascadePrimary)
 
                 Button(action: onExport) {
-                    HStack(spacing: 8) { CascadeIconView(.film, size: 16, color: Brand.textPrimary); Text("Save & export video") }
+                    HStack(spacing: 8) { Image(systemName: "film"); Text("Save & export video") }
                 }
                 .buttonStyle(.cascadeSecondary)
 
                 Button(action: onRetry) {
-                    Text("Scan again")
+                    Text(isSample ? "Back" : "Scan again")
                         .font(.subheadline)
                         .foregroundStyle(Brand.textSecondary)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.plain)
                 .padding(.top, 4)
-
-                if isSample {
-                    Text("Prepared in advance; no scan credit used. Your own pages go through live recognition.")
-                        .font(.caption2)
-                        .foregroundStyle(Brand.textTertiary)
-                }
 
                 Spacer(minLength: 20)
             }
@@ -846,19 +649,21 @@ private struct ScanPreviewView: View {
         let list = report.suspectMeasures.prefix(6).map(String.init).joined(separator: ", ")
         let more = report.suspectMeasures.count > 6 ? " and \(report.suspectMeasures.count - 6) more" : ""
         return HStack(alignment: .top, spacing: 10) {
-            CascadeIconView(.info, size: 16, color: Brand.amber)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(Brand.amber)
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(report.suspectMeasures.count) of \(report.measureCount) measures may have rhythm errors")
                     .font(.caption).bold()
+                    .foregroundStyle(Brand.textPrimary)
                 Text("Measure\(report.suspectMeasures.count == 1 ? "" : "s") \(list)\(more) don't add up to the time signature. Listen to those spots; a sharper scan usually fixes them.")
                     .font(.caption2)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(Brand.textSecondary)
             }
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(10)
+        .background(Brand.amber.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
@@ -876,316 +681,6 @@ private extension SheetMusicRecognitionError {
         switch self {
         case .unreadableScore, .truncatedResult: return true
         default: return false
-        }
-    }
-}
-
-// MARK: - Scan Settings Sheet
-
-private struct ScanSettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    let account: ScanAccountManager
-    let store: ScanStore
-    @State private var settings = ScanSettings.shared
-    @State private var restoreMessage: String? = nil
-    @State private var keyInput: String = ScanSettings.shared.apiKey
-    @State private var confirmDelete = false
-    @State private var deleting = false
-    @State private var deleteError: String? = nil
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                if ScanCloudConfig.baseURL != nil {
-                    Section {
-                        if account.isSignedIn {
-                            LabeledContent("Scans left") {
-                                Text(account.remainingScans.map(String.init) ?? "—")
-                            }
-                            if let credits = account.credits, credits > 0 {
-                                LabeledContent("Purchased credits", value: "\(credits)")
-                            }
-                            Button("Sign Out") {
-                                account.signOut()
-                            }
-                            Button("Delete Account…", role: .destructive) {
-                                confirmDelete = true
-                            }
-                            .disabled(deleting)
-                        } else {
-                            Text("Sign in from the scan screen to get free scans.")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                    } header: {
-                        Text("Account")
-                    } footer: {
-                        Text("Your account holds only an anonymous Apple sign-in ID, your scan usage, and any purchased credits. Deleting it removes that record from our servers; unused credits are forfeited.")
-                    }
-
-                    Section {
-                        ScanPacksList(store: store, account: account,
-                                      onGranted: { restoreMessage = $0 }, onError: { restoreMessage = $0 })
-                        Button("Restore Purchases") {
-                            Task {
-                                let granted = await store.redeemPending()
-                                restoreMessage = granted > 0
-                                    ? "Added \(granted) scan\(granted == 1 ? "" : "s")."
-                                    : "No unredeemed purchases were found. Your balance is up to date."
-                            }
-                        }
-                    } header: {
-                        Text("Scan Packs")
-                    } footer: {
-                        Text("One credit covers a scan of up to \(account.pagesPerCredit) pages. Longer pieces use one credit per \(account.pagesPerCredit) pages.")
-                    }
-                }
-
-                if ownKeyAllowed {
-                    Section {
-                        SecureField("sk-ant-…", text: $keyInput)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .onChange(of: keyInput) { _, newValue in
-                                settings.apiKey = newValue
-                            }
-                    } header: {
-                        Text("Developer — Your Own API Key")
-                    } footer: {
-                        Text("Debug builds only. Used when you're not signed in or have run out of free scans. Stored in the device Keychain.")
-                    }
-
-                    Section {
-                        Picker("Model", selection: Binding(
-                            get: { settings.model },
-                            set: { settings.model = $0 }
-                        )) {
-                            ForEach(ScanSettings.availableModels, id: \.id) { model in
-                                Text(model.label).tag(model.id)
-                            }
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                    } header: {
-                        Text("Recognition Model (own-key scans)")
-                    }
-                }
-
-                Section {
-                    if let url = ScanCloudConfig.privacyPolicyURL {
-                        Link("Privacy Policy", destination: url)
-                    }
-                    LabeledContent("Version", value: Self.versionString)
-                } header: {
-                    Text("About")
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .stageBackground()
-            .navigationTitle("Scan Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
-                }
-            }
-            .confirmationDialog(
-                "Delete your Cascade account?",
-                isPresented: $confirmDelete,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Account", role: .destructive) {
-                    deleting = true
-                    Task {
-                        do {
-                            try await account.deleteAccount()
-                        } catch {
-                            deleteError = error.localizedDescription
-                        }
-                        deleting = false
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This removes your scan record from our servers and signs you out. Songs already in your library stay on this device.")
-            }
-            .alert("Purchases", isPresented: Binding(
-                get: { restoreMessage != nil },
-                set: { if !$0 { restoreMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) { restoreMessage = nil }
-            } message: {
-                Text(restoreMessage ?? "")
-            }
-            .alert("Couldn't Delete Account", isPresented: Binding(
-                get: { deleteError != nil },
-                set: { if !$0 { deleteError = nil } }
-            )) {
-                Button("OK", role: .cancel) { deleteError = nil }
-            } message: {
-                Text(deleteError ?? "")
-            }
-        }
-    }
-
-    private static var versionString: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        return "\(version) (\(build))"
-    }
-}
-
-// MARK: - Document Camera Wrapper
-
-/// VisionKit's document scanner: multi-page capture with automatic edge
-/// detection, perspective correction, and shadow removal — ideal preprocessing
-/// for music recognition.
-private struct DocumentCameraView: UIViewControllerRepresentable {
-    @Environment(\.dismiss) private var dismiss
-    let onScan: ([UIImage]) -> Void
-
-    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
-        let controller = VNDocumentCameraViewController()
-        controller.delegate = context.coordinator
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onScan: onScan, dismiss: { dismiss() })
-    }
-
-    final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let onScan: ([UIImage]) -> Void
-        let dismiss: () -> Void
-
-        init(onScan: @escaping ([UIImage]) -> Void, dismiss: @escaping () -> Void) {
-            self.onScan = onScan
-            self.dismiss = dismiss
-        }
-
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            var images: [UIImage] = []
-            for pageIndex in 0..<scan.pageCount {
-                images.append(scan.imageOfPage(at: pageIndex))
-            }
-            onScan(images)
-            dismiss()
-        }
-
-        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
-            dismiss()
-        }
-
-        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-            print("Document camera failed:", error)
-            dismiss()
-        }
-    }
-}
-
-
-// MARK: - Scan packs (StoreKit 2)
-
-/// Card shown on the scan screen when the account can't cover the next scan.
-private struct ScanPacksCard: View {
-    let store: ScanStore
-    let account: ScanAccountManager
-    let creditsNeeded: Int
-    let onGranted: (String) -> Void
-    let onError: (String) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(headline, systemImage: "sparkles")
-                .font(.subheadline).bold()
-            Text("One credit covers a scan of up to \(account.pagesPerCredit) pages. Packs never expire.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            ScanPacksList(store: store, account: account, onGranted: onGranted, onError: onError)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.accent.opacity(0.08))
-        .cornerRadius(12)
-        .task { await store.loadProducts() }
-    }
-
-    private var headline: String {
-        let remaining = account.remainingScans ?? 0
-        if remaining == 0 { return "You're out of scans" }
-        return "This scan needs \(creditsNeeded) credits — you have \(remaining)"
-    }
-}
-
-/// Product rows with Buy buttons, shared by the scan card and settings.
-private struct ScanPacksList: View {
-    let store: ScanStore
-    let account: ScanAccountManager
-    let onGranted: (String) -> Void
-    let onError: (String) -> Void
-
-    var body: some View {
-        Group {
-            if store.products.isEmpty {
-                if store.isLoadingProducts {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else {
-                    Text(store.loadError ?? "Scan packs aren't available right now.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            } else {
-                ForEach(store.products, id: \.id) { product in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(product.displayName).font(.subheadline).bold()
-                            Text(perScanLabel(product)).font(.caption).foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            buy(product)
-                        } label: {
-                            Text(product.displayPrice)
-                                .font(.subheadline).bold()
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppTheme.accent)
-                        .disabled(store.isPurchasing)
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-        }
-        .task { await store.loadProducts() }
-    }
-
-    private func perScanLabel(_ product: Product) -> String {
-        let credits = ScanStore.credits(for: product)
-        guard credits > 0 else { return product.description }
-        let each = (product.price / Decimal(credits))
-        let formatted = each.formatted(product.priceFormatStyle)
-        return "\(credits) scans · \(formatted) each"
-    }
-
-    private func buy(_ product: Product) {
-        Task {
-            do {
-                switch try await store.purchase(product) {
-                case .granted(let n):
-                    onGranted("Added \(n) scan\(n == 1 ? "" : "s") to your account.")
-                case .pending:
-                    onGranted("Your purchase is waiting for approval. Scans will be added once it's approved.")
-                case .cancelled:
-                    break
-                }
-            } catch {
-                onError(error.localizedDescription)
-            }
         }
     }
 }

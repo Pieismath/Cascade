@@ -8,7 +8,7 @@
 import Foundation
 
 /// A single logical note event in the song
-struct NoteEvent: Identifiable, Codable, Hashable {
+nonisolated struct NoteEvent: Identifiable, Codable, Hashable, Sendable {
     var id: UUID = UUID()
 
     let pitch: Int

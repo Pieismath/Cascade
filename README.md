@@ -76,9 +76,8 @@ Deployed at `https://cascade-scan.jaydfds.workers.dev`; the app points at it via
 `ScanCloudConfig.baseURL`. See [docs/release-checklist.md](docs/release-checklist.md)
 for the one remaining secret to set (`GEMINI_API_KEY` or `ANTHROPIC_API_KEY`).
 
-Debug builds additionally accept a personal Anthropic key in scan settings
-(bring-your-own-key) so you can develop without the worker. Release builds are
-cloud-only.
+The app talks only to the worker; recognition credentials never ship in the
+app, and responses don't name the model behind them.
 
 ## Building and testing
 

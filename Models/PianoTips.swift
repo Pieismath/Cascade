@@ -13,7 +13,7 @@ struct ImportSongTip: Tip {
         Text("Import Your First Song")
     }
     var message: Text? {
-        Text("Tap the Add tab to import a MusicXML file or try a built-in demo song to get started.")
+        Text("Tap Scan or Import on Home to add your own music, or pick a starter piece to get started.")
     }
     var image: Image? {
         Image(systemName: "doc.badge.plus")

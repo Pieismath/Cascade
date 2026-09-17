@@ -2,9 +2,9 @@
 //  SampleScanFlowTests.swift
 //  MyPianoInstructorUITests
 //
-//  End-to-end: Add tab → Scan Sheet Music → bundled sample → Convert →
-//  preview → Save & Export Video → share sheet. Covers the whole
-//  "sheet music in, video out" path without network or credits.
+//  End-to-end: Home → sample scan → Convert → preview → Save & Export Video
+//  → share sheet. Covers the whole "sheet music in, video out" path without
+//  network or credits.
 //
 
 import XCTest
@@ -18,16 +18,8 @@ final class SampleScanFlowTests: XCTestCase {
 
         app.dismissFirstLaunchChrome()
 
-        let addTab = app.tabBars.buttons["Add"]
-        XCTAssertTrue(addTab.waitForExistence(timeout: 10))
-        addTab.tap()
-
-        let scanEntry = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Scan Sheet Music'")).firstMatch
-        XCTAssertTrue(scanEntry.waitForExistence(timeout: 10), "scan entry card not found")
-        scanEntry.tap()
-
         let sample = app.buttons["Sample: Für Elise (opening)"]
-        XCTAssertTrue(sample.waitForExistence(timeout: 10), "sample picker not shown")
+        XCTAssertTrue(app.reveal(sample), "sample scan not reachable on Home")
         sample.tap()
 
         let convert = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Convert Sample'")).firstMatch

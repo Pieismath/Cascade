@@ -8,7 +8,7 @@
 //                                {signedTransaction}      → {added, ...balance}
 //   POST   /v1/recognize         Bearer session,
 //                                {pages:[b64jpeg], pageCount?, quality?, context?, jobId?}
-//                                                         → {musicXML, provider, cached, ...balance}
+//                                                         → {musicXML, cached, ...balance}
 //
 // Money model. Every scan is a "job" that costs ceil(pageCount / PAGES_PER_CREDIT)
 // credits. Each Apple ID gets FREE_SCANS credits for free; beyond that credits
@@ -207,7 +207,7 @@ async function handleRecognize(request, env, ctx) {
   const cached = await env.SCAN_KV.get(cacheKey);
   const account = await loadAccount(env, session.sub, { createIfMissing: true });
   if (cached) {
-    return json(200, { musicXML: cached, provider: "cache", cached: true, ...balance(env, account) });
+    return json(200, { musicXML: cached, cached: true, ...balance(env, account) });
   }
 
   // Job accounting: charged once, then capped.
@@ -257,9 +257,10 @@ async function handleRecognize(request, env, ctx) {
   }
   ctx.waitUntil(env.SCAN_KV.put(cacheKey, result.musicXML, { expirationTtl: CACHE_TTL_SECONDS }));
 
+  // Which model answered stays in the logs; clients only get the result.
+  console.log("recognized with", result.provider);
   return json(200, {
     musicXML: result.musicXML,
-    provider: result.provider,
     cached: false,
     ...balance(env, account),
   });

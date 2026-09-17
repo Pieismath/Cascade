@@ -21,7 +21,7 @@ SCAN OR IMPORT ANYTHING
 • Try it instantly with bundled sample scans before using a credit
 • Import PDFs or photos from Files
 • Open MusicXML files (.musicxml, .xml, .mxl) from MuseScore, Finale, Sibelius, or any notation app
-• Start immediately with the bundled starter library: Twinkle Twinkle, Ode to Joy, Für Elise, Flight of the Bumblebee, a Chopin Nocturne and more
+• Start immediately with the bundled starter pieces: Für Elise, a Chopin Nocturne, Flight of the Bumblebee, Minuet in G, Ode to Joy and more
 
 LEARN AT YOUR OWN PACE
 • Notes fall onto an 88-key piano in time with real piano sound
@@ -59,13 +59,13 @@ Where you host docs/privacy-policy.md.
 
 Cascade converts sheet music to interactive piano lessons and videos.
 
-TESTING WITHOUT SCANNING: the Add tab includes a free starter library (eight pieces) that works fully offline. Tap any of them, then use the Play tab. The export button (share icon) in the player renders a video. The scan screen also offers four bundled sample scans ("Try a sample first": Für Elise opening, Minuet in G, Ode to Joy, Twinkle Twinkle) that run the whole scan → preview → video flow instantly with a prepared transcription, no sign-in or network needed; the app labels them as samples.
+TESTING WITHOUT SCANNING: scroll down the Home screen to "Starter pieces" (nine public-domain pieces that work fully offline). Tap one to open it in the player; the film icon in the player exports a video. Above it, "See a scan" has four bundled sample scans (Für Elise opening, Minuet in G, Ode to Joy, Twinkle Twinkle) that run the whole scan → preview → video flow instantly with a prepared transcription, no sign-in or network needed; the app labels them as samples.
 
-TESTING SCANNING: on the Add tab tap "Scan Sheet Music", sign in with Apple (no name or email requested), then import the attached sample PDF or photograph any printed piano score. Each Apple account receives 1 free scan; further scans are sold as consumable in-app purchases (10 Scans, 25 Scans). Recognition takes roughly 30 to 90 seconds and needs a network connection. The images are processed by our server and discarded.
+TESTING SCANNING: on Home tap "Import" and choose the attached sample PDF (or tap "Scan" and photograph any printed piano score), then tap "Continue with Apple" (no name or email requested) and "Make falling notes". Each Apple account receives 1 free scan; further scans are sold as consumable in-app purchases (10 Scans, 25 Scans). Recognition takes roughly 30 to 90 seconds and needs a network connection. The images are processed by our server and discarded.
 
-IN-APP PURCHASES: consumables are redeemed server-side after verifying Apple's signed transaction; the balance is shown on the scan screen and in scan settings, which also has Restore Purchases.
+IN-APP PURCHASES: consumables are redeemed server-side after verifying Apple's signed transaction; the balance and scan packs are shown on the scan screen when needed and always in Home → Settings (gear icon), which also has Restore purchases.
 
-ACCOUNT DELETION: Scan Sheet Music → gear icon → Delete Account.
+ACCOUNT DELETION: Home → Settings (gear icon) → Delete account (visible once signed in).
 
 PERMISSIONS: Camera is requested only when opening the document scanner. Photo library add-only access is requested only if the user chooses "Save Video" in the share sheet. Notifications are optional practice reminders.
 

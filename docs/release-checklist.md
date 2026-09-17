@@ -16,13 +16,18 @@ unavailable"):
 
 ```bash
 cd server/cascade-scan-worker
-npx wrangler secret put GEMINI_API_KEY        # free tier: aistudio.google.com  ($0 mode)
-npx wrangler secret put ANTHROPIC_API_KEY     # optional, best quality (paid); becomes primary automatically
+npx wrangler secret put ANTHROPIC_API_KEY     # best quality; the recommended setup
+npx wrangler secret put GEMINI_API_KEY        # optional fallback
 ```
+
+The privacy policy promises that page images aren't used to train models. That
+holds for Anthropic's API, and for Gemini only on a billing-enabled (paid)
+project; Google's free tier may use inputs to improve its products, so don't
+use a free-tier Gemini key in production.
 
 Sanity check afterwards: `curl https://cascade-scan.jaydfds.workers.dev/` should return `{"service":"cascade-scan","ok":true}`.
 
-Optional knobs in `wrangler.toml`: `FREE_SCANS` (default 5), model ids. Redeploy with `npx wrangler deploy`.
+Optional knobs in `wrangler.toml`: `FREE_SCANS` (currently 1), `PAGES_PER_CREDIT`, model ids. Redeploy with `npx wrangler deploy`.
 
 ## 2. Privacy policy URL (10 minutes)
 
@@ -59,8 +64,7 @@ personal team can install them. Plug in the phone, pick your personal team under
 Signing & Capabilities, press Run, then on the phone trust the developer in
 Settings → General → VPN & Device Management the first time. In that build,
 samples, imports, practice, and video export all work; cloud scanning needs
-sign-in and is therefore unavailable (the debug bring-your-own-key mode still
-scans if you enter an Anthropic key in scan settings).
+sign-in and is therefore unavailable until you enroll.
 
 After enrollment, to test Sign in with Apple and purchases on device in Debug,
 change the app target's **Debug** `CODE_SIGN_ENTITLEMENTS` back to
@@ -76,7 +80,7 @@ The simulator can't do camera capture or Sign in with Apple properly.
   used to crash without the photo-library permission string; it's fixed).
 - Player export of Für Elise: confirm the video plays back with audio in
   sync.
-- Delete Account from scan settings, then sign in again.
+- Home → Settings → Delete account, then sign in again.
 
 ## 5. App Store Connect (30 minutes)
 

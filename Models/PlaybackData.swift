@@ -9,13 +9,13 @@ import Foundation
 
 // Pedal Info (Audio Only)
 // Stored separately so we don't stretch the visual notes.
-struct PedalEvent: Codable, Hashable {
+nonisolated struct PedalEvent: Codable, Hashable, Sendable {
     let startTime: TimeInterval
     let isDown: Bool
 }
 
 /// All the timing + pitch info needed for playback & visualization
-struct PlaybackData: Codable, Hashable {
+nonisolated struct PlaybackData: Codable, Hashable, Sendable {
     /// Tempo in beats per minute
     let tempo: Double
 

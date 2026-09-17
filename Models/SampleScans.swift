@@ -44,9 +44,4 @@ struct SampleScan: Identifiable, Hashable {
             .flatMap { try? Data(contentsOf: $0) }
             .map { String(decoding: $0, as: UTF8.self) }
     }
-
-    /// Small preview for the sample picker.
-    func thumbnail() -> UIImage? {
-        loadPages().first
-    }
 }

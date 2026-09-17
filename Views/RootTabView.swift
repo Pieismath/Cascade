@@ -12,6 +12,8 @@ struct RootTabView: View {
     @Environment(AchievementManager.self) var achievementManager
     @Environment(ThemeManager.self) var themeManager
     @Environment(NotificationManager.self) var notificationManager
+    @Environment(ScanAccountManager.self) var scanAccount
+    @Environment(ScanStore.self) var scanStore
 
     @AppStorage("pendingTutorialShow") private var pendingTutorialShow = false
     @AppStorage("hasAskedNotificationPermission") private var hasAskedPermission = false
@@ -23,30 +25,22 @@ struct RootTabView: View {
     var body: some View {
         TabView(selection: $tabSelection) {
 
-            // HOME TAB
+            // HOME TAB — scanning, importing and the starter pieces all live here.
             NavigationStack {
                 SongLibraryView(selectedSong: $selectedSong, tabSelection: $tabSelection, showTutorial: $showTutorial)
                     .environment(libraryVM)
                     .environment(statsManager)
                     .environment(achievementManager)
                     .environment(themeManager)
+                    .environment(scanAccount)
+                    .environment(scanStore)
             }
             .tabItem {
                 Label { Text("Home") } icon: { CascadeGlyph.home.image() }
             }
             .tag(0)
 
-            // SCAN / IMPORT TAB
-            NavigationStack {
-                ScanMusicView(selectedSong: $selectedSong, tabSelection: $tabSelection)
-                    .environment(libraryVM)
-            }
-            .tabItem {
-                Label { Text("Add") } icon: { CascadeGlyph.add.image() }
-            }
-            .tag(1)
-
-            // PLAY TAB (hidden tab bar)
+            // PLAY TAB (hidden tab bar). Tags stay 0/2/3 so existing tab jumps keep working.
             NavigationStack {
                 if let selectedSong {
                     let playback = libraryVM.cachedPlayback(for: selectedSong)
@@ -87,6 +81,12 @@ struct RootTabView: View {
             if let index = notif.object as? Int {
                 tabSelection = index
             }
+        }
+        .task {
+            // Keep the scan balance fresh and finish any purchase whose
+            // redemption was interrupted.
+            await scanAccount.refresh()
+            _ = await scanStore.redeemPending()
         }
         .onAppear {
             if pendingTutorialShow {

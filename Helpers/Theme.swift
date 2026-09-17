@@ -9,7 +9,7 @@
 //  generated cover art drawn from its actual notes.
 //
 //  `AppTheme` keeps the names older views use; the new vocabulary lives in
-//  `Brand`, the card/button styles, `ScoreArtView`, and `KeyboardStripView`.
+//  `Brand`, the card/button styles, and `ScoreArtView`.
 //
 
 import SwiftUI
@@ -135,6 +135,21 @@ extension View {
     /// The app background: ink with a faint stage light at the top.
     func stageBackground() -> some View {
         self.background(StageBackground().ignoresSafeArea())
+    }
+
+    /// Fades scrolling content out under the status bar on screens without a
+    /// navigation bar.
+    func statusBarScrim() -> some View {
+        self.overlay(alignment: .top) {
+            GeometryReader { proxy in
+                LinearGradient(colors: [Brand.ink, Brand.ink.opacity(0.85), Brand.ink.opacity(0)],
+                               startPoint: .top, endPoint: .bottom)
+                    .frame(height: proxy.safeAreaInsets.top + 14)
+                    .offset(y: -proxy.safeAreaInsets.top)
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
     }
 }
 
@@ -343,32 +358,6 @@ struct ScoreArtView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-}
-
-/// Decorative keyboard strip for headers and empty states.
-struct KeyboardStripView: View {
-    var highlighted: Set<Int> = []
-    var body: some View {
-        Canvas { context, size in
-            let whites = PianoKeyHelper.whiteKeyMIDIs
-            let ww = size.width / CGFloat(whites.count)
-            context.fill(Path(roundedRect: CGRect(origin: .zero, size: size), cornerRadius: 3), with: .color(.white.opacity(0.9)))
-            for (i, p) in whites.enumerated() {
-                if highlighted.contains(p) {
-                    context.fill(Path(CGRect(x: CGFloat(i) * ww, y: 0, width: ww, height: size.height)), with: .color(Brand.teal.opacity(0.6)))
-                }
-                if i > 0 {
-                    context.fill(Path(CGRect(x: CGFloat(i) * ww, y: 0, width: 0.7, height: size.height)), with: .color(.black.opacity(0.22)))
-                }
-            }
-            for (i, p) in whites.enumerated() where i + 1 < whites.count && PianoKeyHelper.hasBlackKey(between: p, and: whites[i + 1]) {
-                let x = CGFloat(i + 1) * ww - ww * 0.3
-                let isHi = highlighted.contains(p + 1)
-                context.fill(Path(roundedRect: CGRect(x: x, y: 0, width: ww * 0.6, height: size.height * 0.62), cornerRadius: 1),
-                             with: .color(isHi ? Brand.violet : Color(red: 0.08, green: 0.08, blue: 0.12)))
-            }
-        }
     }
 }
 

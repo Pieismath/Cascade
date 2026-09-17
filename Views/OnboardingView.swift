@@ -55,9 +55,7 @@ struct OnboardingView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    KeyboardStripView(highlighted: [60, 67])
-                        .frame(width: 96, height: 22)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                    CascadeWordmark(size: 26, animated: false)
                     Spacer()
                     if currentPage < pages.count - 1 {
                         Button("Skip") { dismiss() }

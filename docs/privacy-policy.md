@@ -1,6 +1,6 @@
 # Cascade Privacy Policy
 
-_Last updated: September 16, 2026_
+_Last updated: September 17, 2026_
 
 Cascade ("the app") is an iOS app that turns sheet music into interactive falling-note piano lessons and videos. This policy explains what information the app handles and why.
 
@@ -25,11 +25,11 @@ Deleting the app deletes all of it.
 
 ### Sheet-music scanning
 
-When you tap **Convert to Falling Notes**, the images of the pages you selected are uploaded over an encrypted (HTTPS) connection to the Cascade scan service, which runs on Cloudflare Workers. The service forwards the images to a third-party AI model provider (Anthropic, and Google as a fallback) to transcribe the notation into MusicXML, then returns the result to your device.
+When you tap **Make falling notes**, the images of the pages you scanned or picked are uploaded over an encrypted (HTTPS) connection to the Cascade scan service, which runs on Cloudflare Workers. The service sends the images to a third-party AI service provider, which processes them on our behalf to transcribe the notation into MusicXML, then returns the result to your device.
 
 - Page images are held in memory only for the duration of the request and are not written to storage.
 - A hash (fingerprint) of the images and the resulting transcription may be cached for up to 60 days so that re-scanning identical pages is instant and does not consume a free scan. The cache contains no images and cannot be reversed into them.
-- AI providers process the images under their API terms, which prohibit using API inputs to train their models.
+- We use paid API access whose terms prohibit the provider from using the images to train its models.
 
 ### Sign in with Apple
 
@@ -46,11 +46,12 @@ Additional scans are sold as consumable in-app purchases through Apple. Apple ha
 
 ### Deleting your account
 
-Open **Scan Sheet Music → gear icon → Delete Account**. This removes your usage record and credit balance from our servers immediately and signs you out. Unused purchased credits are forfeited. Songs in your library remain on your device.
+On the Home screen, open **Settings (gear icon) → Delete account**. This removes your usage record and credit balance from our servers immediately and signs you out. Unused purchased credits are forfeited. Songs in your library remain on your device.
 
 ## Permissions the app asks for
 
-- **Camera** — to photograph sheet music. Used only while the scanner is open.
+- **Camera** — to scan sheet music. Used only while the scanner is open.
+- **Photos you pick** — when you choose pages from your photo library, iOS's photo picker gives the app only the photos you select; the app has no other access to your library.
 - **Photo library (add only)** — to save exported videos when you choose "Save Video" in the share sheet.
 - **Notifications** — optional daily practice reminders, scheduled locally on your device.
 

@@ -2,9 +2,9 @@
 //  ExportFlowTests.swift
 //  MyPianoInstructorUITests
 //
-//  End-to-end: first launch → onboarding → starter song → player → video
-//  export → share sheet. Exercises the offline audio render, the CoreGraphics
-//  frame writer, and the merge on a real (simulated) device.
+//  End-to-end: first launch → onboarding → starter piece on Home → player →
+//  video export → share sheet. Exercises the offline audio render, the
+//  CoreGraphics frame writer, and the merge on a real (simulated) device.
 //
 
 import XCTest
@@ -19,16 +19,9 @@ final class ExportFlowTests: XCTestCase {
         // Onboarding (first launch only)
         app.dismissFirstLaunchChrome()
 
-        // Add tab → starter library → Twinkle
-        let addTab = app.tabBars.buttons["Add"]
-        XCTAssertTrue(addTab.waitForExistence(timeout: 10), "tab bar not found")
-        addTab.tap()
-
-        // Rows below the fold aren't in the accessibility tree until scrolled into view.
-        let twinkle = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Twinkle'")).firstMatch
-        var attempts = 0
-        while !twinkle.exists && attempts < 4 { app.swipeUp(); attempts += 1 }
-        XCTAssertTrue(twinkle.waitForExistence(timeout: 5), "starter song not listed")
+        // Home → Starter pieces → Twinkle
+        let twinkle = app.buttons["Twinkle Twinkle Little Star by Traditional"]
+        XCTAssertTrue(app.reveal(twinkle, inRow: "starterPieces", maxSwipes: 12), "starter piece not reachable")
         twinkle.tap()
 
         // Player opens (landscape). Export button has an accessibility label.

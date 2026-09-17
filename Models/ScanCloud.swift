@@ -2,10 +2,9 @@
 //  ScanCloud.swift
 //  MyPianoInstructor
 //
-//  Cascade Cloud: the deployed cascade-scan worker that holds provider API
-//  keys server-side. Users sign in with Apple, get free scans tied to their
-//  account, and never touch an API key. When `ScanCloudConfig.baseURL` is nil
-//  the app behaves exactly as before (bring-your-own-key only).
+//  Cascade's scan service: the deployed cascade-scan worker. Users sign in
+//  with Apple, get a free scan tied to their account, and buy scan packs for
+//  more. Recognition credentials live only on the server.
 //
 
 import Foundation
@@ -13,11 +12,12 @@ import AuthenticationServices
 import Observation
 
 enum ScanCloudConfig {
-    /// The deployed cascade-scan worker URL, e.g.
-    /// `URL(string: "https://cascade-scan.yourname.workers.dev")`.
-    /// See server/cascade-scan-worker/README.md for the 5-minute deploy.
-    /// nil = cloud mode off; the scan screen falls back to bring-your-own-key.
+    /// The deployed cascade-scan worker. See server/cascade-scan-worker/README.md.
+    /// nil turns scanning off (the scan screen says it's unavailable).
     static let baseURL: URL? = URL(string: "https://cascade-scan.jaydfds.workers.dev")
+
+    /// Pages per scan the UI allows; matches the worker's MAX_PAGES_PER_SCAN.
+    static let maxPagesPerScan = 12
 
     /// Hosted privacy policy, linked from scan settings and required by App
     /// Store Connect. Host docs/privacy-policy.md (GitHub Pages works), paste
@@ -218,9 +218,7 @@ final class ScanAccountManager {
 
 // MARK: - Cloud Recognizer
 
-/// SheetMusicRecognizer backed by the cascade-scan worker. Drop-in replacement
-/// for the direct-API recognizer; the capture/preview UI doesn't know the
-/// difference.
+/// SheetMusicRecognizer backed by the cascade-scan worker.
 struct CascadeCloudRecognizer: SheetMusicRecognizer {
     let baseURL: URL
     let sessionToken: String
@@ -231,8 +229,6 @@ struct CascadeCloudRecognizer: SheetMusicRecognizer {
     nonisolated func recognize(pages: [Data], pageCount: Int, context: String?, jobID: String?) async throws -> String {
         struct RecognizeResponse: Decodable {
             let musicXML: String
-            let provider: String
-            let cached: Bool
         }
 
         var request = URLRequest(url: baseURL.appending(path: "v1/recognize"))

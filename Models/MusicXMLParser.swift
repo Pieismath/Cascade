@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct MusicXMLParser {
+nonisolated struct MusicXMLParser {
     static func parse(data: Data) -> PlaybackData {
         let delegate = MusicXMLParserDelegate()
         let parser = XMLParser(data: data)
@@ -22,7 +22,7 @@ struct MusicXMLParser {
     }
 }
 
-private class MusicXMLParserDelegate: NSObject, XMLParserDelegate {
+nonisolated private class MusicXMLParserDelegate: NSObject, XMLParserDelegate {
 
     // Positions and durations are tracked in quarter-note beats (Double), not raw
     // ticks: <divisions> may change mid-piece or differ between parts in exported

@@ -2,29 +2,42 @@
 //  SongLibraryView.swift
 //  MyPianoInstructor
 //
-//  Home: a greeting, the piece you're working on as a large piece of score
-//  art, quick actions, and the library as a list of art thumbnails.
+//  Home: the wordmark, the piece you're working on, the two ways to bring
+//  music in (Scan opens the camera, Import opens Files), your library, and
+//  free things to try — sample scans and the starter pieces.
 //
 
 import SwiftUI
-import TipKit
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct SongLibraryView: View {
     @Environment(SongLibraryViewModel.self) var libraryVM
     @Environment(PracticeStatsManager.self) var statsManager
     @Environment(AchievementManager.self) var achievementManager
     @Environment(ThemeManager.self) var themeManager
+    @Environment(ScanAccountManager.self) var scanAccount
+    @Environment(ScanStore.self) var scanStore
 
     @Binding var selectedSong: Song?
     @Binding var tabSelection: Int
     @Binding var showTutorial: Bool
 
-    @State private var showAbout = false
-    @State private var tutorialAfterAbout = false
+    @State private var showSettings = false
+    @State private var tourAfterSettings = false
+
+    // Bringing music in
+    @State private var showCamera = false
+    @State private var capturedPages: [UIImage] = []
+    @State private var showPhotoPicker = false
+    @State private var photoSelection: [PhotosPickerItem] = []
+    @State private var showImporter = false
+    @State private var scanSession: ScanSession? = nil
+    @State private var importError: String? = nil
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 28) {
+            VStack(alignment: .leading, spacing: 30) {
                 header
                     .padding(.horizontal, 20)
 
@@ -36,7 +49,7 @@ struct SongLibraryView: View {
                         .padding(.horizontal, 20)
                 }
 
-                quickActions
+                addMusic
                     .padding(.horizontal, 20)
 
                 if statsManager.sessionsCount > 0 {
@@ -48,19 +61,75 @@ struct SongLibraryView: View {
                     library
                 }
 
-                Spacer(minLength: 24)
+                sampleScans
+
+                starterPieces
+
+                Spacer(minLength: 16)
             }
-            .padding(.top, 8)
+            .padding(.top, 4)
         }
+        .statusBarScrim()
         .stageBackground()
         .navigationBarHidden(true)
-        .sheet(isPresented: $showAbout, onDismiss: {
-            if tutorialAfterAbout {
-                tutorialAfterAbout = false
+        .task { HomeArt.shared.warm() }
+        .sheet(isPresented: $showSettings, onDismiss: {
+            if tourAfterSettings {
+                tourAfterSettings = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { showTutorial = true }
             }
         }) {
-            AboutCascadeSheet(isPresented: $showAbout, triggerTutorial: $tutorialAfterAbout)
+            SettingsView(startTour: $tourAfterSettings)
+                .environment(scanAccount)
+                .environment(scanStore)
+                .environment(themeManager)
+        }
+        // Scan: the document camera, then the scan screen with the pages.
+        .fullScreenCover(isPresented: $showCamera, onDismiss: {
+            guard !capturedPages.isEmpty else { return }
+            scanSession = ScanSession(pages: capturedPages)
+            capturedPages = []
+        }) {
+            DocumentCameraView { capturedPages = $0 }
+                .ignoresSafeArea()
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoSelection,
+                      maxSelectionCount: ScanCloudConfig.maxPagesPerScan, matching: .images)
+        .onChange(of: photoSelection) { _, items in
+            guard !items.isEmpty else { return }
+            Task {
+                let pages = await ScanPageLoader.pages(from: items)
+                photoSelection = []
+                // Let the picker finish dismissing before presenting.
+                try? await Task.sleep(for: .milliseconds(350))
+                if pages.isEmpty {
+                    importError = "Those photos couldn't be read."
+                } else {
+                    scanSession = ScanSession(pages: pages)
+                }
+            }
+        }
+        // Import: MusicXML goes straight into the library; PDFs and images get scanned.
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.musicXML, .compressedMusicXML, .xml, .pdf, .image],
+            allowsMultipleSelection: true
+        ) { result in
+            handleImport(result)
+        }
+        .fullScreenCover(item: $scanSession) { session in
+            SheetScanView(session: session, selectedSong: $selectedSong, tabSelection: $tabSelection)
+                .environment(libraryVM)
+                .environment(scanAccount)
+                .environment(scanStore)
+        }
+        .alert("Couldn't Import", isPresented: Binding(
+            get: { importError != nil },
+            set: { if !$0 { importError = nil } }
+        )) {
+            Button("OK", role: .cancel) { importError = nil }
+        } message: {
+            Text(importError ?? "")
         }
         .alert("Storage Error", isPresented: Binding(
             get: { libraryVM.saveError != nil },
@@ -75,32 +144,21 @@ struct SongLibraryView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(greeting).eyebrowStyle()
-                Text("Cascade")
-                    .font(CascadeFont.display(36))
-                    .foregroundStyle(Brand.textPrimary)
-            }
-            Spacer()
+        HStack(alignment: .center, spacing: 10) {
+            CascadeWordmark(size: 34)
+            Spacer(minLength: 8)
             if statsManager.currentStreak > 0 {
-                Chip(text: "\(statsManager.currentStreak) day streak", icon: "flame.fill", tint: Brand.amber)
+                Button { tabSelection = 3 } label: {
+                    Chip(text: "\(statsManager.currentStreak)", icon: "flame.fill", tint: Brand.amber)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(statsManager.currentStreak) day streak")
             }
-            Button { showAbout = true } label: {
-                CascadeIconView(.info, size: 18, color: Brand.textPrimary)
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape.fill")
             }
             .buttonStyle(IconButtonStyle())
-            .accessibilityLabel("About Cascade")
-        }
-    }
-
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        switch hour {
-        case 5..<12: return "Good morning"
-        case 12..<17: return "Good afternoon"
-        case 17..<22: return "Good evening"
-        default: return "Night session"
+            .accessibilityLabel("Settings")
         }
     }
 
@@ -135,7 +193,9 @@ struct SongLibraryView: View {
                         Spacer()
                         ZStack {
                             Circle().fill(.white).frame(width: 52, height: 52)
-                            CascadeIconView(.play, size: 22, color: Brand.ink)
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Brand.ink)
                                 .offset(x: 2)
                         }
                         .glow(Brand.teal, radius: 14, opacity: 0.6)
@@ -148,27 +208,22 @@ struct SongLibraryView: View {
         .accessibilityLabel("Continue practicing \(song.title)")
     }
 
+    /// No songs yet: the product in one picture.
     private var emptyHero: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        ZStack(alignment: .bottomLeading) {
             ScoreArtView(playback: SongLibraryView.demoPlayback, window: 10, cornerRadius: 28)
-                .frame(height: 220)
-                .overlay(alignment: .topLeading) {
-                    Text("Your first piece goes here")
-                        .eyebrowStyle(.white.opacity(0.75))
-                        .padding(18)
-                }
-            Text("Sheet music in, falling notes out.")
-                .font(CascadeFont.display(28))
-                .foregroundStyle(Brand.textPrimary)
-            Text("Scan a page, import a file, or grab something from the starter library. It plays here in seconds.")
-                .font(.subheadline)
-                .foregroundStyle(Brand.textSecondary)
-            Button {
-                tabSelection = 1
-            } label: {
-                HStack(spacing: 8) { CascadeIconView(.plus, size: 16, color: Brand.ink); Text("Add your first song") }
+                .frame(height: 250)
+            LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Start here").eyebrowStyle(.white.opacity(0.7))
+                Text("Sheet music in.\nFalling notes out.")
+                    .font(CascadeFont.display(30))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .buttonStyle(.cascadePrimary)
+            .padding(22)
+            .padding(.bottom, 34)
         }
     }
 
@@ -186,42 +241,83 @@ struct SongLibraryView: View {
         return PlaybackData(tempo: 120, totalDuration: 8, notes: notes.sorted { $0.startTime < $1.startTime })
     }()
 
-    // MARK: - Quick actions
+    // MARK: - Scan & Import
 
-    private var quickActions: some View {
-        HStack(spacing: 10) {
-            quickAction("Scan", glyph: .scan, tint: Brand.teal) { tabSelection = 1 }
-            quickAction("Import", glyph: .importFile, tint: Brand.amber) { tabSelection = 1 }
-            NavigationLink {
-                ThemePickerView().environment(themeManager)
-            } label: {
-                quickActionLabel("Theme", glyph: .theme, tint: Brand.violet)
+    private var addMusic: some View {
+        HStack(spacing: 12) {
+            Button(action: startScan) {
+                ActionTileLabel(title: "Scan", subtitle: "Sheet music on paper", tint: Brand.teal) {
+                    ScanTileArt()
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Customize theme, currently \(themeManager.selectedTheme.rawValue)")
-            quickAction("Awards", glyph: .award, tint: Brand.coral) { tabSelection = 3 }
+            .buttonStyle(TileButtonStyle())
+            .contextMenu {
+                if DocumentCameraView.isAvailable {
+                    Button { showCamera = true } label: { Label("Use camera", systemImage: "camera") }
+                }
+                Button { showPhotoPicker = true } label: { Label("Choose from Photos", systemImage: "photo.on.rectangle") }
+            }
+            .accessibilityLabel("Scan sheet music")
+
+            Button { showImporter = true } label: {
+                ActionTileLabel(title: "Import", subtitle: "PDF or MusicXML", tint: Brand.amber) {
+                    ImportTileArt()
+                }
+            }
+            .buttonStyle(TileButtonStyle())
+            .accessibilityLabel("Import a file")
         }
     }
 
-    private func quickAction(_ title: String, glyph: CascadeGlyph, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            quickActionLabel(title, glyph: glyph, tint: tint)
+    private func startScan() {
+        if DocumentCameraView.isAvailable {
+            showCamera = true
+        } else {
+            showPhotoPicker = true
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
     }
 
-    private func quickActionLabel(_ title: String, glyph: CascadeGlyph, tint: Color) -> some View {
-        VStack(spacing: 8) {
-            IconBadge(glyph: glyph, tint: tint)
-            Text(title)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Brand.textPrimary)
+    private func handleImport(_ result: Result<[URL], Error>) {
+        let urls: [URL]
+        switch result {
+        case .success(let picked): urls = picked
+        case .failure(let error):
+            importError = error.localizedDescription
+            return
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
+        guard !urls.isEmpty else { return }
+
+        // Score files go straight into the library and open in the player.
+        let scoreFiles = urls.filter(ScoreFileImport.isScoreFile)
+        if !scoreFiles.isEmpty {
+            var lastAdded: Song?
+            var problems: [String] = []
+            for url in scoreFiles {
+                do {
+                    let score = try ScoreFileImport.read(url)
+                    lastAdded = libraryVM.addSong(title: score.title, musicXML: score.musicXML)
+                } catch {
+                    problems.append(error.localizedDescription)
+                }
+            }
+            if let lastAdded {
+                selectedSong = lastAdded
+                tabSelection = 2
+            }
+            if !problems.isEmpty { importError = problems.joined(separator: "\n\n") }
+            return
+        }
+
+        // PDFs and images are sheet music to scan.
+        let loaded = ScanPageLoader.pages(from: urls)
+        guard !loaded.pages.isEmpty else {
+            importError = "Couldn't read \(loaded.unreadable.joined(separator: ", "))."
+            return
+        }
+        // Let the Files sheet finish dismissing before presenting.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            scanSession = ScanSession(pages: loaded.pages, title: loaded.title)
+        }
     }
 
     // MARK: - Momentum
@@ -259,14 +355,8 @@ struct SongLibraryView: View {
 
     private var library: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SectionHeader("Your library", subtitle: "\(libraryVM.songs.count) piece\(libraryVM.songs.count == 1 ? "" : "s")") {
-                Button { tabSelection = 1 } label: {
-                    CascadeIconView(.plus, size: 18, color: Brand.textPrimary)
-                }
-                .buttonStyle(IconButtonStyle())
-                .accessibilityLabel("Add music")
-            }
-            .padding(.horizontal, 20)
+            SectionHeader("Your library", subtitle: "\(libraryVM.songs.count) piece\(libraryVM.songs.count == 1 ? "" : "s")")
+                .padding(.horizontal, 20)
 
             VStack(spacing: 10) {
                 ForEach(libraryVM.songs) { song in
@@ -314,7 +404,9 @@ struct SongLibraryView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                CascadeIconView(.play, size: 14, color: Brand.textSecondary)
+                Image(systemName: "play.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Brand.textSecondary)
                     .frame(width: 34, height: 34)
                     .background(Brand.surfaceHigh, in: Circle())
             }
@@ -338,73 +430,336 @@ struct SongLibraryView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(song.title), \(difficulty.level.label) difficulty, \(formatClock(song.durationSeconds))")
     }
-}
 
-// MARK: - About Cascade Sheet
+    // MARK: - Sample scans
 
-private struct AboutCascadeSheet: View {
-    @Binding var isPresented: Bool
-    @Binding var triggerTutorial: Bool
+    private var sampleScans: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader("See a scan", subtitle: "Real sheet music, converted free")
+                .padding(.horizontal, 20)
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        KeyboardStripView(highlighted: [60, 64, 67])
-                            .frame(height: 34)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Text("Cascade")
-                            .font(CascadeFont.display(40))
-                            .foregroundStyle(Brand.textPrimary)
-                        Text("Sheet music in. Falling notes out.")
-                            .font(.headline)
-                            .foregroundStyle(Brand.textSecondary)
-                    }
-                    .padding(.top, 8)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Why this exists").eyebrowStyle()
-                        Text("Piano lessons cost $50 to $100 an hour. Cascade turns any sheet music into an interactive lesson you can slow down, loop, and play along with, for the price of a coffee or nothing at all.")
-                            .font(.body)
-                            .foregroundStyle(Brand.textPrimary)
-                        Text("Everything except scanning works offline, and your music never leaves your device unless you scan it.")
-                            .font(.subheadline)
-                            .foregroundStyle(Brand.textSecondary)
-                    }
-                    .cascadeCard(padding: 18)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("New to the player?").eyebrowStyle()
-                        Text("Take the 60-second tour: falling notes, speed, looping, and hand separation.")
-                            .font(.subheadline)
-                            .foregroundStyle(Brand.textSecondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(SampleScan.all) { sample in
                         Button {
-                            triggerTutorial = true
-                            isPresented = false
+                            scanSession = ScanSession(pages: sample.loadPages(), title: sample.title, sample: sample)
                         } label: {
-                            Label("Start the tour", systemImage: "play.fill")
+                            SampleScanCard(sample: sample)
                         }
-                        .buttonStyle(.cascadePrimary)
+                        .buttonStyle(TileButtonStyle())
+                        .accessibilityLabel("Sample: \(sample.title)")
                     }
-                    .cascadeCard(padding: 18)
-
-                    Text("Made with ♪ · Public-domain starter library · Fluid R3 piano")
-                        .font(.caption)
-                        .foregroundStyle(Brand.textTertiary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 8)
                 }
                 .padding(.horizontal, 20)
+                .padding(.vertical, 4)
             }
-            .stageBackground()
-            .navigationTitle("About")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { isPresented = false }.fontWeight(.semibold)
+            .accessibilityIdentifier("sampleScans")
+        }
+    }
+
+    // MARK: - Starter pieces
+
+    private var starterPieces: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionHeader("Starter pieces", subtitle: "Free and ready to play")
+                .padding(.horizontal, 20)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(DemoSongs.all, id: \.resourceName) { demo in
+                        Button {
+                            if let song = libraryVM.addStarter(demo) {
+                                selectedSong = song
+                                tabSelection = 2
+                            }
+                        } label: {
+                            StarterCard(demo: demo, inLibrary: libraryVM.songs.contains { $0.title == demo.title })
+                        }
+                        .buttonStyle(TileButtonStyle())
+                        .accessibilityLabel("\(demo.title) by \(demo.composer)")
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
+            }
+            .accessibilityIdentifier("starterPieces")
+        }
+    }
+}
+
+// MARK: - Tiles
+
+private struct TileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+private struct ActionTileLabel<Art: View>: View {
+    let title: String
+    let subtitle: String
+    let tint: Color
+    @ViewBuilder var art: () -> Art
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            art()
+                .frame(height: 70)
+                .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .foregroundStyle(Brand.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Brand.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Brand.surface)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(RadialGradient(colors: [tint.opacity(0.24), .clear], center: .top, startRadius: 0, endRadius: 150))
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+}
+
+/// A bar of music inside a viewfinder, with the scan light passing over it.
+private struct ScanTileArt: View {
+    var body: some View {
+        ZStack {
+            Canvas { context, size in
+                let gap: CGFloat = 6
+                let top = size.height / 2 - gap * 2
+                let left: CGFloat = 20
+                let right = size.width - 20
+                for i in 0..<5 {
+                    context.fill(Path(CGRect(x: left, y: top + CGFloat(i) * gap, width: right - left, height: 1)),
+                                 with: .color(.white.opacity(0.32)))
+                }
+                // Treble-ish figure: (x fraction, staff step from the top line, stem up)
+                let figure: [(CGFloat, CGFloat)] = [(0.18, 3.5), (0.36, 2.5), (0.54, 1.5), (0.72, 2.0), (0.88, 3.0)]
+                for (fx, step) in figure {
+                    let cx = left + (right - left) * fx
+                    let cy = top + step * gap
+                    let head = Path(ellipseIn: CGRect(x: -4, y: -3, width: 8, height: 6))
+                        .applying(CGAffineTransform(rotationAngle: -0.35))
+                        .applying(CGAffineTransform(translationX: cx, y: cy))
+                    context.fill(head, with: .color(.white.opacity(0.9)))
+                    context.fill(Path(CGRect(x: cx + 3, y: cy - 18, width: 1.3, height: 18)), with: .color(.white.opacity(0.9)))
+                }
+                // Beam over the last pair
+                let bx1 = left + (right - left) * 0.72 + 3, bx2 = left + (right - left) * 0.88 + 4.3
+                var beam = Path()
+                beam.move(to: CGPoint(x: bx1, y: top + 2.0 * gap - 18))
+                beam.addLine(to: CGPoint(x: bx2, y: top + 3.0 * gap - 18))
+                beam.addLine(to: CGPoint(x: bx2, y: top + 3.0 * gap - 14.5))
+                beam.addLine(to: CGPoint(x: bx1, y: top + 2.0 * gap - 14.5))
+                beam.closeSubpath()
+                context.fill(beam, with: .color(.white.opacity(0.9)))
+            }
+
+            ViewfinderCorners()
+                .stroke(Brand.teal, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .padding(.horizontal, 6)
+
+            Capsule()
+                .fill(Brand.teal)
+                .frame(height: 2.5)
+                .padding(.horizontal, 12)
+                .shadow(color: Brand.teal, radius: 6)
+                .offset(y: 9)
+        }
+    }
+}
+
+private struct ViewfinderCorners: Shape {
+    func path(in rect: CGRect) -> Path {
+        let arm: CGFloat = 12
+        let r: CGFloat = 6
+        var p = Path()
+        // top-left
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY + arm + r))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+        p.addQuadCurve(to: CGPoint(x: rect.minX + r, y: rect.minY), control: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.minX + arm + r, y: rect.minY))
+        // top-right
+        p.move(to: CGPoint(x: rect.maxX - arm - r, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.minY + r), control: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + arm + r))
+        // bottom-right
+        p.move(to: CGPoint(x: rect.maxX, y: rect.maxY - arm - r))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+        p.addQuadCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY), control: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.maxX - arm - r, y: rect.maxY))
+        // bottom-left
+        p.move(to: CGPoint(x: rect.minX + arm + r, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+        p.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - r), control: CGPoint(x: rect.minX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - arm - r))
+        return p
+    }
+}
+
+/// Two files fanned out: a PDF and a MusicXML score.
+private struct ImportTileArt: View {
+    var body: some View {
+        ZStack {
+            sheet(label: "PDF", tagAlignment: .bottomLeading)
+                .rotationEffect(.degrees(-10))
+                .offset(x: -22, y: 3)
+            sheet(label: "XML", tagAlignment: .bottomTrailing)
+                .rotationEffect(.degrees(7))
+                .offset(x: 18, y: -1)
+        }
+    }
+
+    private func sheet(label: String, tagAlignment: Alignment) -> some View {
+        RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .fill(Color(red: 0.95, green: 0.94, blue: 0.91))
+            .frame(width: 46, height: 60)
+            .overlay(alignment: .top) {
+                VStack(spacing: 9) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        VStack(spacing: 2) {
+                            ForEach(0..<3, id: \.self) { _ in
+                                Rectangle().fill(Color.black.opacity(0.28)).frame(height: 0.7)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 7)
+                .padding(.top, 9)
+            }
+            .overlay(alignment: tagAlignment) {
+                Text(label)
+                    .font(.system(size: 8, weight: .heavy, design: .rounded))
+                    .foregroundStyle(Brand.ink)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2.5)
+                    .background(Brand.amber, in: Capsule())
+                    .offset(x: tagAlignment == .bottomLeading ? -7 : 7, y: 4)
+            }
+            .shadow(color: .black.opacity(0.35), radius: 6, y: 3)
+    }
+}
+
+// MARK: - Cards
+
+/// The printed page on top, the falling notes it becomes underneath.
+private struct SampleScanCard: View {
+    let sample: SampleScan
+    private var art: HomeArt { HomeArt.shared }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .bottom) {
+                if let thumb = art.pageThumbnails[sample.id] {
+                    Image(uiImage: thumb)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 136, height: 176, alignment: .top)
+                        .clipped()
+                        .transition(.opacity)
+                }
+                if let playback = art.playbacks[sample.xmlResource] {
+                    ScoreArtView(playback: playback, window: 6, cornerRadius: 0)
+                        .frame(width: 136, height: 84)
+                        .mask(
+                            LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.35)],
+                                           startPoint: .top, endPoint: .bottom)
+                        )
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 136, height: 176)
+            .background(Color(red: 0.97, green: 0.97, blue: 0.95))
+            .animation(.easeOut(duration: 0.3), value: art.pageThumbnails[sample.id] != nil)
+            .animation(.easeOut(duration: 0.3), value: art.playbacks[sample.xmlResource] != nil)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Brand.ink)
+                    .frame(width: 22, height: 22)
+                    .background(Brand.teal, in: Circle())
+                    .padding(7)
+            }
+            .shadow(color: .black.opacity(0.35), radius: 10, y: 5)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sample.title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Brand.textPrimary)
+                    .lineLimit(1)
+                Text(sample.composer)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Brand.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(width: 136, alignment: .leading)
+    }
+}
+
+private struct StarterCard: View {
+    let demo: DemoSongs.DemoSong
+    let inLibrary: Bool
+
+    private var tint: Color {
+        switch demo.difficulty {
+        case "Beginner": return Brand.mint
+        case "Intermediate": return Brand.amber
+        default: return Brand.coral
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Brand.surfaceHigh)
+                if let playback = HomeArt.shared.playbacks[demo.resourceName] {
+                    ScoreArtView(playback: playback, window: 10, cornerRadius: 18)
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 150, height: 150)
+            .animation(.easeOut(duration: 0.3), value: HomeArt.shared.playbacks[demo.resourceName] != nil)
+            .overlay(alignment: .topTrailing) {
+                if inLibrary {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(Brand.ink)
+                        .frame(width: 22, height: 22)
+                        .background(Brand.mint, in: Circle())
+                        .padding(8)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(demo.title)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Brand.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Circle().fill(tint).frame(width: 6, height: 6)
+                    Text(demo.composer)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Brand.textTertiary)
+                        .lineLimit(1)
                 }
             }
         }
+        .frame(width: 150, alignment: .leading)
     }
 }

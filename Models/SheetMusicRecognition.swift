@@ -6,9 +6,9 @@
 //  into MusicXML that feeds the existing parse → falling-notes pipeline.
 //
 //  Recognition runs behind the SheetMusicRecognizer protocol so the backend is
-//  swappable (a self-hosted Audiveris server or an on-device model could slot
-//  in later). The default backend sends page images to the Claude vision API,
-//  which returns MusicXML constrained to the subset MusicXMLParser understands.
+//  swappable. The app ships one backend, Cascade's own scan service
+//  (CascadeCloudRecognizer in ScanCloud.swift); the service returns MusicXML
+//  constrained to the subset MusicXMLParser understands.
 //
 
 import UIKit
@@ -17,25 +17,14 @@ import Security
 // MARK: - Errors
 
 enum SheetMusicRecognitionError: LocalizedError {
-    case missingAPIKey
     case imageEncodingFailed
-    case network(String)
-    case httpError(Int, String)
     case truncatedResult
     case unreadableScore(String)
 
     var errorDescription: String? {
         switch self {
-        case .missingAPIKey:
-            return "No API key is set. Tap the gear icon and add your Anthropic API key to enable scanning."
         case .imageEncodingFailed:
             return "The page images could not be prepared for upload."
-        case .network(let detail):
-            return "Network error: \(detail)"
-        case .httpError(let code, let message):
-            if code == 401 { return "The API key was rejected. Check it in scan settings." }
-            if code == 429 { return "The recognition service is rate-limiting requests. Wait a moment and try again." }
-            return "The recognition service returned an error (\(code)): \(message)"
         case .truncatedResult:
             return "The piece is too long to transcribe in one pass. Try scanning fewer pages at a time."
         case .unreadableScore(let detail):
@@ -93,7 +82,7 @@ enum SheetMusicValidator {
 // MARK: - Page Image Preparation
 
 nonisolated enum SheetPagePrep {
-    /// Longest edge sent to the vision model — larger is wasted tokens,
+    /// Longest edge uploaded for recognition — larger is wasted bandwidth,
     /// smaller loses beams and dots.
     static let maxDimension: CGFloat = 1568
 
@@ -114,181 +103,9 @@ nonisolated enum SheetPagePrep {
     }
 }
 
-// MARK: - Claude Vision Backend
-
-struct ClaudeSheetMusicRecognizer: SheetMusicRecognizer {
-
-    var apiKey: String
-    var model: String
-
-    private nonisolated static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
-
-    /// Pages per scan the UI allows. Requests are batched by system, so this
-    /// is a sanity limit on scan size rather than a per-request ceiling.
-    static let maxPagesPerScan = 12
-
-    nonisolated func recognize(pages: [Data], pageCount: Int, context: String?, jobID: String?) async throws -> String {
-        guard !apiKey.isEmpty else { throw SheetMusicRecognitionError.missingAPIKey }
-        guard !pages.isEmpty else {
-            throw SheetMusicRecognitionError.unreadableScore("No pages to recognize.")
-        }
-
-        var content: [[String: Any]] = pages.map { page in
-            [
-                "type": "image",
-                "source": [
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": page.base64EncodedString()
-                ]
-            ]
-        }
-        content.append(["type": "text", "text": Self.transcriptionRequest(pageCount: pages.count, context: context)])
-
-        let body: [String: Any] = [
-            "model": model,
-            "max_tokens": 32000,
-            "system": Self.systemPrompt,
-            "messages": [["role": "user", "content": content]]
-        ]
-
-        var request = URLRequest(url: Self.endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        // Transcription of a full piece can take a while; the default 60s
-        // request timeout is too tight for multi-page scores.
-        request.timeoutInterval = 600
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await URLSession.shared.data(for: request)
-        } catch {
-            throw SheetMusicRecognitionError.network(error.localizedDescription)
-        }
-
-        guard let http = response as? HTTPURLResponse else {
-            throw SheetMusicRecognitionError.network("invalid response")
-        }
-        guard http.statusCode == 200 else {
-            let message = Self.apiErrorMessage(from: data) ?? "no details"
-            throw SheetMusicRecognitionError.httpError(http.statusCode, message)
-        }
-
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let contentBlocks = json["content"] as? [[String: Any]] else {
-            throw SheetMusicRecognitionError.network("unexpected response format")
-        }
-
-        if let stopReason = json["stop_reason"] as? String, stopReason == "max_tokens" {
-            throw SheetMusicRecognitionError.truncatedResult
-        }
-
-        let text = contentBlocks
-            .compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
-            .joined()
-
-        return Self.extractMusicXML(from: text)
-    }
-
-    nonisolated private static func apiErrorMessage(from data: Data) -> String? {
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let error = json["error"] as? [String: Any] else { return nil }
-        return error["message"] as? String
-    }
-
-    /// Defensive cleanup: strip markdown fences or stray prose around the
-    /// document should the model add any despite instructions.
-    nonisolated static func extractMusicXML(from text: String) -> String {
-        var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if let fenceStart = result.range(of: "```") {
-            let afterFence = result[fenceStart.upperBound...]
-            if let fenceEnd = afterFence.range(of: "```") {
-                var inner = String(afterFence[..<fenceEnd.lowerBound])
-                if inner.hasPrefix("xml") { inner = String(inner.dropFirst(3)) }
-                result = inner.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-
-        if let xmlStart = result.range(of: "<?xml") ?? result.range(of: "<score-partwise") {
-            result = String(result[xmlStart.lowerBound...])
-        }
-        if let end = result.range(of: "</score-partwise>", options: .backwards) {
-            result = String(result[..<end.upperBound])
-        }
-        return result
-    }
-
-    // MARK: Prompts
-
-    nonisolated static let systemPrompt = """
-    You are an expert music engraver who transcribes piano sheet music images into MusicXML with perfect fidelity. You read key signatures, time signatures, clefs, accidentals, ties, dots, tuplets, dynamics, tempo markings, and pedal marks accurately, and you keep both staves rhythmically aligned. Your entire reply is always exactly one complete MusicXML document — no markdown fences, no commentary before or after.
-    """
-
-    nonisolated static func transcriptionRequest(pageCount: Int, context: String? = nil) -> String {
-        let extra = (context?.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap { $0.isEmpty ? nil : "\n\nAdditional context for this request:\n\($0)\n" } ?? ""
-        return """
-        Transcribe the piano music in \(pageCount == 1 ? "this image" : "these \(pageCount) images (in reading order)") into a single continuous MusicXML document.\(extra)
-
-        Format requirements — the consuming app reads a specific MusicXML subset:
-        - `score-partwise` with exactly one part (id "P1") for piano.
-        - Two staves: right hand on staff 1 with voice 1, left hand on staff 2 with voice 5. Every note carries <voice> and <staff>. Use <backup> to return to the start of the measure for the left hand.
-        - Choose one <divisions> value for the whole piece that expresses every rhythm you see, including dots and tuplets (24 works for most music; use 480 if there are complex tuplets). Every <duration> must be a whole number.
-        - Emit <sound tempo="N"/> in the first measure (from the printed tempo/metronome marking, or a musically sensible value for the style if none is printed). Add further <sound tempo> elements only where the score changes tempo.
-        - Spell sounding pitches with <step>, <octave>, and <alter> (apply the key signature and accidentals; use <alter>1</alter> for sharps, -1 for flats).
-        - Chords: subsequent chord tones carry <chord/>. Ties between same pitches use <tie type="start"/> and <tie type="stop"/>. Rests use <rest/> with a duration. Grace notes use <grace/> and no duration.
-        - Pedal markings become <direction><direction-type><pedal type="start"/></direction-type></direction> and type "stop" where released.
-        - Write out repeats literally: unfold repeat barlines, volta endings, D.C./D.S. instructions into the full played-through sequence.
-        - If a detail is smudged or ambiguous, choose the most musically plausible reading and continue — never insert comments or placeholders.
-
-        Reply with only the MusicXML document.
-        """
-    }
-}
-
-// MARK: - Scan Settings (API key in Keychain, model in defaults)
-
-@Observable
-final class ScanSettings {
-    static let shared = ScanSettings()
-
-    /// Models offered in scan settings. Sonnet is the cost/quality sweet spot
-    /// for clean printed music; Fable helps on dense or handwritten scores.
-    static let availableModels: [(id: String, label: String)] = [
-        ("claude-sonnet-5", "Sonnet 5 — fast, recommended"),
-        ("claude-fable-5", "Fable 5 — highest accuracy"),
-    ]
-
-    var apiKey: String {
-        didSet { KeychainStore.set(apiKey, forKey: Self.apiKeyAccount) }
-    }
-
-    var model: String {
-        didSet { UserDefaults.standard.set(model, forKey: Self.modelKey) }
-    }
-
-    var hasAPIKey: Bool { !apiKey.trimmingCharacters(in: .whitespaces).isEmpty }
-
-    private static let apiKeyAccount = "anthropic-api-key"
-    private static let modelKey = "scanModel"
-
-    private init() {
-        apiKey = KeychainStore.get(Self.apiKeyAccount) ?? ""
-        model = UserDefaults.standard.string(forKey: Self.modelKey) ?? "claude-sonnet-5"
-    }
-
-    func makeRecognizer() -> SheetMusicRecognizer {
-        ClaudeSheetMusicRecognizer(apiKey: apiKey.trimmingCharacters(in: .whitespaces), model: model)
-    }
-}
-
 // MARK: - Keychain
 
-/// Minimal generic-password storage — API keys don't belong in UserDefaults.
+/// Minimal generic-password storage for the scan-service session token.
 enum KeychainStore {
     private static let service = "com.cascade.pianoinstructor"
 

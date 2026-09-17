@@ -47,62 +47,63 @@ final class ScreenshotTour: XCTestCase {
         if notNow.waitForExistence(timeout: 3) { notNow.tap() }
         _ = app.tabBars.buttons["Home"].waitForExistence(timeout: 10)
 
+        sleep(1)
         shot("04-home-empty")
+        app.swipeUp()
+        sleep(1)
+        shot("05-home-empty-scrolled")
+        app.swipeUp()
+        sleep(1)
+        shot("05b-home-empty-bottom")
 
-        let addTab = app.tabBars.buttons["Add"]
-        XCTAssertTrue(addTab.waitForExistence(timeout: 10))
-        addTab.tap()
-        shot("05-add")
-
-        // Load two starter songs so Home has content.
-        for name in ["Für Elise", "Twinkle"] {
-            let row = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", name)).firstMatch
-            var attempts = 0
-            while !row.exists && attempts < 4 { app.swipeUp(); attempts += 1 }
-            if row.waitForExistence(timeout: 5) {
-                row.tap()
-                if app.buttons["Export video"].waitForExistence(timeout: 10) { shot("06-player-\(name.prefix(3))") }
+        // Load two starter pieces so Home has content.
+        for label in ["Für Elise by Beethoven", "Twinkle Twinkle Little Star by Traditional"] {
+            let card = app.buttons[label]
+            if app.reveal(card, inRow: "starterPieces", maxSwipes: 12) {
+                card.tap()
+                if app.buttons["Export video"].waitForExistence(timeout: 10) { shot("06-player-\(label.prefix(3))") }
                 let back = app.buttons["Back to library"]
                 if back.waitForExistence(timeout: 5) { back.tap() }
-                _ = addTab.waitForExistence(timeout: 5)
-                addTab.tap()
+                _ = app.tabBars.buttons["Home"].waitForExistence(timeout: 5)
+                app.tabBars.buttons["Home"].tap()
             }
         }
-        app.tabBars.buttons["Home"].tap()
+        sleep(1)
+        // Back to the top
+        for _ in 0..<4 { app.swipeDown() }
         sleep(1)
         shot("07-home")
+        app.swipeUp()
+        sleep(1)
+        shot("07b-home-scrolled")
 
-        // Song detail if reachable
-        let firstSong = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Für Elise'")).firstMatch
-        if firstSong.waitForExistence(timeout: 3) {
-            firstSong.press(forDuration: 1.2)
-            let details = app.buttons["Details"]
-            if details.waitForExistence(timeout: 3) {
-                details.tap()
-                sleep(1)
-                shot("08-song-detail")
-            }
-            // Relaunch rather than fight the navigation stack; onboarding is done now.
-            app.terminate()
-            app.launch()
-            _ = app.tabBars.buttons["Add"].waitForExistence(timeout: 15)
+        // Settings
+        for _ in 0..<4 { app.swipeDown() }
+        let settings = app.buttons["Settings"]
+        if settings.waitForExistence(timeout: 5) {
+            settings.tap()
+            sleep(2)
+            shot("08-settings")
+            app.swipeUp()
+            sleep(1)
+            shot("08b-settings-scrolled")
+            app.buttons["Done"].tap()
         }
 
-        app.tabBars.buttons["Add"].tap()
-        let scanEntry = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Scan Sheet Music'")).firstMatch
-        if scanEntry.waitForExistence(timeout: 5) {
-            scanEntry.tap()
+        // Sample scan
+        let sample = app.buttons["Sample: Für Elise (opening)"]
+        if app.reveal(sample) {
+            sample.tap()
             sleep(1)
-            shot("09-scan")
-            let sample = app.buttons["Sample: Für Elise (opening)"]
-            if sample.waitForExistence(timeout: 5) {
-                sample.tap(); sleep(1); shot("10-scan-loaded")
-                app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Convert Sample'")).firstMatch.tap()
+            shot("09-scan-review")
+            let convert = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Convert Sample'")).firstMatch
+            if convert.waitForExistence(timeout: 5) {
+                convert.tap()
+                usleep(700_000)
+                shot("10-scan-reading")
                 _ = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] 'Save & Export Video'")).firstMatch.waitForExistence(timeout: 20)
                 shot("11-scan-preview")
             }
-            app.buttons["Scan settings"].tap(); sleep(1); shot("12-scan-settings")
-            app.buttons["Done"].tap()
             app.buttons["Cancel"].tap()
         }
 
