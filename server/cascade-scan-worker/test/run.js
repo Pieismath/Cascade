@@ -282,21 +282,45 @@ await test("gemini 3 requests keep thinking short; older models get no such fiel
     body = JSON.parse(init.body);
     return ok();
   });
-  assert.equal(body.generationConfig.thinking_level, "low", "thinking tokens share the output budget");
+  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, "low", "thinking tokens share the output budget");
   assert.equal(body.generationConfig.maxOutputTokens, 24000);
 
   await recognize({ GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-2.5-flash" }, ["cGFnZQ=="], "standard", async (_url, init) => {
     body = JSON.parse(init.body);
     return ok();
   });
-  assert.equal(body.generationConfig.thinking_level, undefined);
+  assert.equal(body.generationConfig.thinkingConfig, undefined);
 
   await recognize(
     { GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-3.6-flash", GEMINI_THINKING_LEVEL: "minimal" },
     ["cGFnZQ=="], "standard",
     async (_url, init) => { body = JSON.parse(init.body); return ok(); }
   );
-  assert.equal(body.generationConfig.thinking_level, "minimal");
+  assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, "minimal");
+});
+
+await test("a rejected thinking field is dropped and the scan still goes through", async () => {
+  const bodies = [];
+  const fetcher = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    bodies.push(body);
+    if (body.generationConfig.thinkingConfig) {
+      return new Response(
+        JSON.stringify({ error: { message: 'Invalid JSON payload received. Unknown name "thinkingLevel" at \'generation_config.thinking_config\': Cannot find field.' } }),
+        { status: 400 }
+      );
+    }
+    return new Response(
+      JSON.stringify({ candidates: [{ content: { parts: [{ text: SCORE }] }, finishReason: "STOP" }] }),
+      { status: 200 }
+    );
+  };
+
+  const result = await recognize({ GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-3.6-flash" }, ["cGFnZQ=="], "standard", fetcher);
+  assert.equal(result.musicXML, SCORE);
+  assert.equal(bodies.length, 2, "retried once without the thinking hint");
+  assert.equal(bodies[1].generationConfig.thinkingConfig, undefined);
+  assert.equal(bodies[1].generationConfig.maxOutputTokens, 24000);
 });
 
 await test("recognize does not fall back on non-retryable errors", async () => {

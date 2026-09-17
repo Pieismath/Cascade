@@ -173,21 +173,35 @@ export async function callGemini(env, pages, model = null, fetcher = fetch, cont
   parts.push({ text: transcriptionRequest(pages.length, context) });
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-  const res = await fetcher(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": env.GEMINI_API_KEY,
-    },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: "user", parts }],
-      generationConfig: geminiGenerationConfig(env, model),
-    }),
-  });
+  const send = (generationConfig) =>
+    fetcher(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: "user", parts }],
+        generationConfig,
+      }),
+    });
+
+  const config = geminiGenerationConfig(env, model);
+  let res = await send(config);
+  let detail = res.ok ? null : await safeErrorMessage(res);
+
+  // Google moves the thinking knob between API generations (thinkingBudget →
+  // thinkingConfig.thinkingLevel → thinking_level). If this model won't take
+  // ours, send the request again without it rather than failing the scan.
+  if (!res.ok && res.status === 400 && config.thinkingConfig &&
+      /unknown name|cannot find field|thinking/i.test(detail ?? "")) {
+    const { thinkingConfig, ...withoutThinking } = config;
+    res = await send(withoutThinking);
+    detail = res.ok ? null : await safeErrorMessage(res);
+  }
 
   if (!res.ok) {
-    const detail = await safeErrorMessage(res);
     throw new ProviderError(`gemini ${res.status}: ${detail}`, {
       retryable: res.status === 429 || res.status >= 500,
     });
@@ -212,7 +226,7 @@ export async function callGemini(env, pages, model = null, fetcher = fetch, cont
 function geminiGenerationConfig(env, model) {
   const config = { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 };
   if (/^gemini-[3-9]/.test(model)) {
-    config.thinking_level = env.GEMINI_THINKING_LEVEL || "low";
+    config.thinkingConfig = { thinkingLevel: env.GEMINI_THINKING_LEVEL || "low" };
   }
   return config;
 }
