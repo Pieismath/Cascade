@@ -2,8 +2,8 @@
 
 The backend for Cascade's sheet-music scanning. Holds the provider API keys,
 verifies Sign in with Apple, tracks per-account free-scan quota, caches
-identical scans, and routes recognition to Anthropic (primary) with an
-optional Gemini fallback.
+identical scans, and routes recognition to Anthropic or Gemini
+(`PRIMARY_PROVIDER` picks; the other covers retryable failures).
 
 ## Current deployment
 
@@ -22,12 +22,16 @@ npx wrangler kv namespace create SCAN_KV
 
 # 2. Secrets — SESSION_SECRET plus at least one provider key
 npx wrangler secret put SESSION_SECRET        # generate: openssl rand -hex 32
-npx wrangler secret put GEMINI_API_KEY        # free tier at aistudio.google.com
-npx wrangler secret put ANTHROPIC_API_KEY     # optional, best quality (paid)
+npx wrangler secret put GEMINI_API_KEY        # aistudio.google.com — cheapest
+npx wrangler secret put ANTHROPIC_API_KEY     # best accuracy
 
-# Gemini-only = $0 mode: the worker runs everything on Gemini's free tier.
-# Add ANTHROPIC_API_KEY later and it automatically becomes primary, with
-# Gemini demoted to outage fallback. No code changes either way.
+# Either key alone is enough. With both, PRIMARY_PROVIDER in wrangler.toml
+# ("anthropic" or "gemini") picks who answers first and the other covers rate
+# limits and outages. No code changes either way.
+#
+# Gemini's free tier is for development only: Google trains on what you send,
+# human reviewers may read it, and its terms allow unpaid use only outside the
+# EEA / Switzerland / UK. Enable billing before shipping to users.
 
 # 3. Ship it
 npx wrangler deploy

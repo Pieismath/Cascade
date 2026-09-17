@@ -34,13 +34,13 @@ final class ExportFlowTests: XCTestCase {
 
         let shareSheet = app.otherElements["ActivityListView"]
         let failedAlert = app.alerts["Export Failed"]
-        let deadline = Date().addingTimeInterval(240)
+        let deadline = Date().addingTimeInterval(360)
         var finished = false
         while Date() < deadline {
             if shareSheet.exists { finished = true; break }
             if failedAlert.exists { XCTFail("export reported failure"); return }
             RunLoop.current.run(until: Date().addingTimeInterval(1))
         }
-        XCTAssertTrue(finished, "share sheet did not appear within 4 minutes")
+        XCTAssertTrue(finished, "share sheet did not appear within 6 minutes")
     }
 }

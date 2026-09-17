@@ -16,14 +16,30 @@ unavailable"):
 
 ```bash
 cd server/cascade-scan-worker
-npx wrangler secret put ANTHROPIC_API_KEY     # best quality; the recommended setup
-npx wrangler secret put GEMINI_API_KEY        # optional fallback
+npx wrangler secret put GEMINI_API_KEY         # cheapest per scan
+npx wrangler secret put ANTHROPIC_API_KEY      # best accuracy
 ```
 
-The privacy policy promises that page images aren't used to train models. That
-holds for Anthropic's API, and for Gemini only on a billing-enabled (paid)
-project; Google's free tier may use inputs to improve its products, so don't
-use a free-tier Gemini key in production.
+Set either or both. With both, `PRIMARY_PROVIDER` in `wrangler.toml` picks who
+answers first ("anthropic" or "gemini"); the other one covers rate limits and
+outages automatically. Redeploy after editing: `npx wrangler deploy`.
+
+Rough cost per scan (one credit = up to 4 pages ≈ 3 requests of system crops,
+each ~4k input tokens in and ~6k MusicXML tokens out): Gemini 2.5 Flash
+($0.30/$2.50 per M) ≈ 3–6¢; Claude Sonnet ($2/$10 per M) ≈ 15–25¢. The
+per-credit caps (24 images / 6 requests) hold the worst case near 10¢ and 40¢
+respectively, so a $4.99 ten-scan pack keeps a wide margin either way. Set a
+spend limit in whichever console you use.
+
+**Use a paid (billing-enabled) Google project if you go with Gemini.** On the
+free tier Google's terms say: content submitted is used "to provide, improve,
+and develop Google products", human reviewers may read it, "Do not submit
+sensitive, confidential, or personal information to the Unpaid Services", and
+— the blocker for a worldwide App Store release — "You may use only Paid
+Services when making API Clients available to users in the European Economic
+Area, Switzerland, or the United Kingdom." Free-tier limits (about 10
+requests/minute and a few hundred a day for the whole project) are also shared
+by every user of the app. The free key is fine for development.
 
 Sanity check afterwards: `curl https://cascade-scan.jaydfds.workers.dev/` should return `{"service":"cascade-scan","ok":true}`.
 

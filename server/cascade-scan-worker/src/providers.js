@@ -1,5 +1,5 @@
-// Recognition providers. Anthropic (Claude vision) is primary; Gemini is the
-// optional fallback for outages/rate limits. Both are prompted to emit the
+// Recognition providers. Either can be primary (PRIMARY_PROVIDER); the other
+// covers retryable failures when its key is configured. Both are prompted to emit the
 // MusicXML subset the iOS app's parser understands, and the raw reply passes
 // through the same defensive extraction the app used when it called
 // Anthropic directly.
@@ -160,8 +160,8 @@ export async function* sseEvents(body) {
 
 // MARK: Gemini (fallback)
 
-export async function callGemini(env, pages, fetcher = fetch, context = "") {
-  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+export async function callGemini(env, pages, model = null, fetcher = fetch, context = "") {
+  model = model || env.GEMINI_MODEL || "gemini-2.5-flash";
   const parts = pages.map((b64) => ({
     inline_data: { mime_type: "image/jpeg", data: b64 },
   }));
@@ -202,42 +202,56 @@ export async function callGemini(env, pages, fetcher = fetch, context = "") {
 // MARK: Routing
 
 /**
- * Primary/fallback routing:
- * - With an Anthropic key: quality "standard" → ANTHROPIC_MODEL; "high" →
- *   ANTHROPIC_MODEL_HIGH (the app escalates when a result fails its parser),
- *   and Gemini covers retryable Anthropic failures when configured.
- * - With only a Gemini key (free-tier mode): Gemini handles everything.
+ * Provider order: PRIMARY_PROVIDER first when its key is set, otherwise
+ * Anthropic then Gemini. Whichever provider is second covers retryable
+ * failures (rate limits, overload, 5xx) from the first.
  */
-export async function recognize(env, pages, quality, fetcher = fetch, context = "") {
-  if (!env.ANTHROPIC_API_KEY && env.GEMINI_API_KEY) {
-    const musicXML = await callGemini(env, pages, fetcher, context);
-    return { musicXML, provider: `gemini/${env.GEMINI_MODEL || "gemini-2.5-flash"}` };
+export function providerOrder(env) {
+  const available = { anthropic: !!env.ANTHROPIC_API_KEY, gemini: !!env.GEMINI_API_KEY };
+  const preferred = String(env.PRIMARY_PROVIDER || "").toLowerCase();
+  const order = [];
+  if (available[preferred]) order.push(preferred);
+  for (const name of ["anthropic", "gemini"]) {
+    if (available[name] && !order.includes(name)) order.push(name);
   }
+  return order;
+}
 
-  const model =
-    quality === "high"
+/**
+ * Quality "high" is the app's escalation retry: the stronger model of
+ * whichever provider is answering.
+ */
+function modelFor(env, provider, quality) {
+  if (provider === "anthropic") {
+    return quality === "high"
       ? env.ANTHROPIC_MODEL_HIGH || "claude-fable-5"
       : env.ANTHROPIC_MODEL || "claude-sonnet-5";
-
-  let primaryError;
-  try {
-    const musicXML = await callAnthropic(env, pages, model, fetcher, context);
-    return { musicXML, provider: `anthropic/${model}` };
-  } catch (err) {
-    primaryError = err;
   }
+  return quality === "high"
+    ? env.GEMINI_MODEL_HIGH || env.GEMINI_MODEL || "gemini-2.5-flash"
+    : env.GEMINI_MODEL || "gemini-2.5-flash";
+}
 
-  const canFallback =
-    env.GEMINI_API_KEY &&
-    primaryError instanceof ProviderError &&
-    primaryError.retryable;
+export async function recognize(env, pages, quality, fetcher = fetch, context = "") {
+  const order = providerOrder(env);
+  if (order.length === 0) throw new ProviderError("no provider key configured");
 
-  if (canFallback) {
-    const musicXML = await callGemini(env, pages, fetcher, context);
-    return { musicXML, provider: `gemini/${env.GEMINI_MODEL || "gemini-2.5-flash"}` };
+  let firstError;
+  for (let i = 0; i < order.length; i++) {
+    const provider = order[i];
+    const model = modelFor(env, provider, quality);
+    try {
+      const musicXML = provider === "anthropic"
+        ? await callAnthropic(env, pages, model, fetcher, context)
+        : await callGemini(env, pages, model, fetcher, context);
+      return { musicXML, provider: `${provider}/${model}` };
+    } catch (err) {
+      if (!firstError) firstError = err;
+      const retryable = err instanceof ProviderError && err.retryable;
+      if (!retryable || i + 1 === order.length) throw firstError;
+    }
   }
-
-  throw primaryError;
+  throw firstError;
 }
 
 async function safeErrorMessage(res) {

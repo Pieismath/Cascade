@@ -61,9 +61,9 @@ pages ─▶ SheetSystemSplitter ─▶ system crops, batched ─▶ cascade-sca
 
 `server/cascade-scan-worker` is a Cloudflare Worker (plain JS, offline tests in
 `test/run.js`). It verifies Sign in with Apple, mints session tokens, holds each
-account's credit balance in KV, caches identical scans, routes to Anthropic with
-Gemini fallback (or Gemini-only for a $0 setup), rate-limits, and supports
-account deletion.
+account's credit balance in KV, caches identical scans, routes recognition to
+Anthropic or Gemini (`PRIMARY_PROVIDER` chooses; the other covers retryable
+failures), rate-limits, and supports account deletion.
 
 Credits: 1 free per Apple ID, then consumable packs bought with StoreKit 2
 (`Models/ScanStore.swift`). A scan costs 1 credit per 4 pages and is capped in

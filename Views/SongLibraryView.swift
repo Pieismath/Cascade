@@ -252,14 +252,10 @@ struct SongLibraryView: View {
                 }
             }
             .buttonStyle(TileButtonStyle())
-            .contextMenu {
-                if DocumentCameraView.isAvailable {
-                    Button { showCamera = true } label: { Label("Use camera", systemImage: "camera") }
-                }
-                Button { showPhotoPicker = true } label: { Label("Choose from Photos", systemImage: "photo.on.rectangle") }
-                Button { pickFiles(pages: true) } label: { Label("Choose a PDF", systemImage: "doc.richtext") }
-            }
             .accessibilityLabel("Scan sheet music")
+            // Tapping the tile goes straight to the camera; the corner button
+            // is where pages that already exist come from.
+            .overlay(alignment: .bottomTrailing) { scanSourceMenu }
 
             Button { pickFiles(pages: false) } label: {
                 ActionTileLabel(title: "Import", subtitle: "MusicXML file · free", tint: Brand.amber) {
@@ -269,6 +265,25 @@ struct SongLibraryView: View {
             .buttonStyle(TileButtonStyle())
             .accessibilityLabel("Import a file")
         }
+    }
+
+    private var scanSourceMenu: some View {
+        Menu {
+            if DocumentCameraView.isAvailable {
+                Button { showCamera = true } label: { Label("Take photos", systemImage: "camera") }
+            }
+            Button { showPhotoPicker = true } label: { Label("Choose from Photos", systemImage: "photo.on.rectangle") }
+            Button { pickFiles(pages: true) } label: { Label("Choose a PDF or images", systemImage: "doc.richtext") }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Brand.textSecondary)
+                .frame(width: 30, height: 30)
+                .background(Brand.surfaceHigh, in: Circle())
+                .overlay(Circle().strokeBorder(Brand.hairline, lineWidth: 1))
+        }
+        .padding(10)
+        .accessibilityLabel("Other scan sources")
     }
 
     private func startScan() {

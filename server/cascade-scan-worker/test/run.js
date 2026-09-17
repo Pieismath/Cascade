@@ -227,7 +227,36 @@ await test("recognize falls back to gemini on retryable anthropic failure", asyn
   assert.equal(result.musicXML, SCORE);
 });
 
-await test("gemini-only env runs entirely on gemini (free-tier mode)", async () => {
+await test("PRIMARY_PROVIDER=gemini routes to gemini first, anthropic covers outages", async () => {
+  const geminiFirst = { ...ENV, PRIMARY_PROVIDER: "gemini", GEMINI_MODEL_HIGH: "gemini-2.5-pro" };
+  const calls = [];
+  const ok = new Response(
+    JSON.stringify({ candidates: [{ content: { parts: [{ text: SCORE }] }, finishReason: "STOP" }] }),
+    { status: 200 }
+  );
+  const first = await recognize(geminiFirst, ["cGFnZQ=="], "standard", async (url) => {
+    calls.push(String(url));
+    return ok.clone();
+  });
+  assert.equal(first.provider, "gemini/gemini-2.5-flash");
+  assert.ok(calls[0].includes("generativelanguage.googleapis.com"));
+
+  const high = await recognize(geminiFirst, ["cGFnZQ=="], "high", async (url) => {
+    assert.ok(String(url).includes("gemini-2.5-pro"), "high quality uses the stronger gemini model");
+    return ok.clone();
+  });
+  assert.equal(high.provider, "gemini/gemini-2.5-pro");
+
+  const fellBack = await recognize(geminiFirst, ["cGFnZQ=="], "standard", async (url) => {
+    if (String(url).includes("generativelanguage.googleapis.com")) {
+      return new Response(JSON.stringify({ error: { message: "quota" } }), { status: 429 });
+    }
+    return sseResponse(SCORE);
+  });
+  assert.equal(fellBack.provider, "anthropic/claude-sonnet-5");
+});
+
+await test("gemini-only env runs entirely on gemini", async () => {
   const geminiOnly = { ...ENV, ANTHROPIC_API_KEY: undefined };
   const fetcher = async (url) => {
     assert.ok(String(url).includes("generativelanguage.googleapis.com"), "must not call anthropic");

@@ -24,19 +24,32 @@ extension XCUIApplication {
         _ = tabBars.buttons["Home"].waitForExistence(timeout: 10)
     }
 
-    /// Scrolls Home down until `element` can be tapped. Cards in a horizontal
+    /// Scrolls Home until `element` is fully on screen. Cards in a horizontal
     /// row are brought in by swiping that row (`row`) left.
+    ///
+    /// Visibility is judged by frames: `isHittable` raises "activation point
+    /// invalid" for elements parked off screen, which fails the test instead
+    /// of telling us to keep scrolling.
     @discardableResult
-    func reveal(_ element: XCUIElement, inRow row: String? = nil, maxSwipes: Int = 8) -> Bool {
+    func reveal(_ element: XCUIElement, inRow row: String? = nil, maxSwipes: Int = 10) -> Bool {
+        let screen = windows.element(boundBy: 0).frame
+
+        func onScreen(_ candidate: XCUIElement) -> Bool {
+            guard candidate.exists else { return false }
+            let frame = candidate.frame
+            return !frame.isEmpty && screen.contains(frame)
+        }
+
         var swipes = 0
-        while !(element.exists && element.isHittable) && swipes < maxSwipes {
-            if let row, scrollViews[row].exists, scrollViews[row].isHittable {
-                scrollViews[row].swipeLeft()
+        while !onScreen(element) && swipes < maxSwipes {
+            let strip = row.map { scrollViews[$0] }
+            if let strip, strip.exists, !strip.frame.isEmpty, screen.intersects(strip.frame) {
+                strip.swipeLeft()
             } else {
                 swipeUp()
             }
             swipes += 1
         }
-        return element.exists && element.isHittable
+        return onScreen(element)
     }
 }
