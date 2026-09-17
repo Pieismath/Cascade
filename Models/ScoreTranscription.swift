@@ -33,8 +33,12 @@ nonisolated enum SheetSystemSplitter {
         let staffCount: Int
     }
 
-    /// Analysis width; the profile is computed on a downsampled grayscale copy.
+    /// Analysis width; the profile is computed on a grayscale copy that is
+    /// narrowed but never shortened — squashing a page vertically blurs staff
+    /// lines into the paper and they stop being found.
     private static let analysisWidth = 800
+    /// Ceiling on analysis height for very large scans.
+    private static let analysisMaxHeight = 3200
     /// Fraction of the row that must be dark for the row to count as a staff line.
     private static let lineFillThreshold: CGFloat = 0.45
 
@@ -84,7 +88,9 @@ nonisolated enum SheetSystemSplitter {
     /// Per-row fraction of dark pixels, computed on a downsampled grayscale copy.
     nonisolated static func rowDarknessProfile(of image: CGImage) -> [CGFloat]? {
         let width = min(analysisWidth, image.width)
-        let height = max(1, Int(CGFloat(image.height) * CGFloat(width) / CGFloat(image.width)))
+        // Full vertical resolution (rows are what we measure), capped so a
+        // huge scan doesn't cost more than it has to.
+        let height = min(image.height, analysisMaxHeight)
         guard width > 10, height > 10 else { return nil }
 
         var pixels = [UInt8](repeating: 0, count: width * height)
@@ -113,10 +119,13 @@ nonisolated enum SheetSystemSplitter {
         let inset = width / 25
         let usable = width - 2 * inset
         var profile = [CGFloat](repeating: 0, count: height)
-        // CGContext bitmaps are bottom-up; flip so index 0 is the top row.
+        // A bitmap context stores its first row at the top of the drawn image,
+        // so row 0 here is row 0 of the page. (Reading it bottom-up mirrored
+        // the page, which paired every bass staff with the next system's
+        // treble — invisible on an evenly spaced test page.)
         for row in 0..<height {
             var dark = 0
-            let base = (height - 1 - row) * width
+            let base = row * width
             for x in inset..<(width - inset) where pixels[base + x] < inkThreshold {
                 dark += 1
             }
@@ -151,23 +160,60 @@ nonisolated enum SheetSystemSplitter {
         var spacing: CGFloat { CGFloat(bottom - top) / 4 }
     }
 
-    /// Groups line centres into 5-line staves with consistent spacing.
+    /// Groups line centres into staves. Lines are evenly spaced, so the
+    /// spacing itself is the signal: runs of lines at that spacing form a
+    /// staff, and a staff missing a line or two is completed from the spacing
+    /// rather than thrown away (photographed pages lose lines regularly).
     nonisolated static func groupIntoStaves(lineRows: [Int]) -> [Staff] {
+        guard lineRows.count >= 3, let spacing = lineSpacing(in: lineRows) else { return [] }
+        let tolerance = max(1.5, spacing * 0.35)
+
         var staves: [Staff] = []
-        var i = 0
-        while i + 4 < lineRows.count {
-            let candidate = Array(lineRows[i..<(i + 5)])
-            let gaps = zip(candidate.dropFirst(), candidate).map { $0 - $1 }
-            let mean = CGFloat(gaps.reduce(0, +)) / 4
-            let consistent = mean >= 2 && gaps.allSatisfy { abs(CGFloat($0) - mean) <= max(1.5, mean * 0.35) }
-            if consistent {
-                staves.append(Staff(top: candidate[0], bottom: candidate[4]))
-                i += 5
+        var index = 0
+        while index < lineRows.count {
+            // Walk forward through the five line positions of one staff. A
+            // jump of two or three spacings just means the page didn't give us
+            // that line; anything wider ends the staff.
+            let top = lineRows[index]
+            var filledSlots = 1
+            var found = 1
+            var lastRow = top
+            var next = index + 1
+
+            while next < lineRows.count, filledSlots < 5 {
+                let delta = CGFloat(lineRows[next] - lastRow)
+                let steps = (delta / spacing).rounded()
+                guard steps >= 1, steps <= 3,
+                      abs(delta - steps * spacing) <= tolerance,
+                      filledSlots + Int(steps) <= 5 else { break }
+                filledSlots += Int(steps)
+                found += 1
+                lastRow = lineRows[next]
+                next += 1
+            }
+
+            if found >= 3 {
+                let bottom = filledSlots == 5 ? lastRow : top + Int((spacing * 4).rounded())
+                staves.append(Staff(top: top, bottom: bottom))
+                index = next
             } else {
-                i += 1
+                index += 1
             }
         }
         return staves
+    }
+
+    /// The most common small gap between line centres — the staff line spacing.
+    nonisolated static func lineSpacing(in lineRows: [Int]) -> CGFloat? {
+        let gaps = zip(lineRows.dropFirst(), lineRows).map { $0 - $1 }.filter { $0 >= 2 }
+        guard !gaps.isEmpty else { return nil }
+        let sorted = gaps.sorted()
+        // Staff lines outnumber every other kind of gap on a page of music, so
+        // the lower quartile lands inside a staff.
+        let candidate = CGFloat(sorted[sorted.count / 4])
+        let close = gaps.map(CGFloat.init).filter { abs($0 - candidate) <= max(1.5, candidate * 0.35) }
+        guard close.count >= 2 else { return nil }
+        return close.reduce(0, +) / CGFloat(close.count)
     }
 
     struct Band {
@@ -176,21 +222,27 @@ nonisolated enum SheetSystemSplitter {
         var staffCount: Int
     }
 
-    /// Groups staves into systems: staves closer together than about two
-    /// staff heights belong to the same system (a piano grand staff), larger
-    /// gaps separate systems. Bands extend to the midpoint of each gap.
+    /// Groups staves into systems. Piano music is pairs of staves, and on a
+    /// tightly engraved page the gap between systems is only a little larger
+    /// than the gap inside a grand staff — so the alternating rhythm of the
+    /// gaps decides, and a plain size threshold is only the fallback.
     nonisolated static func groupIntoSystems(staves: [Staff], pageHeight: Int) -> [Band] {
         guard let first = staves.first else { return [] }
+        let gaps = zip(staves.dropFirst(), staves).map { CGFloat($0.top - $1.bottom) }
         let staffHeight = staves.map { CGFloat($0.bottom - $0.top) }.reduce(0, +) / CGFloat(staves.count)
-        let joinGap = staffHeight * 2.2
 
         var groups: [[Staff]] = [[first]]
-        for staff in staves.dropFirst() {
-            let previous = groups[groups.count - 1].last!
-            if CGFloat(staff.top - previous.bottom) <= joinGap {
-                groups[groups.count - 1].append(staff)
-            } else {
-                groups.append([staff])
+        if let pairs = grandStaffPairs(staves: staves, gaps: gaps) {
+            groups = pairs
+        } else {
+            let joinGap = systemBreakGap(gaps: gaps, staves: staves)
+            for staff in staves.dropFirst() {
+                let previous = groups[groups.count - 1].last!
+                if CGFloat(staff.top - previous.bottom) < joinGap {
+                    groups[groups.count - 1].append(staff)
+                } else {
+                    groups.append([staff])
+                }
             }
         }
 
@@ -216,6 +268,37 @@ nonisolated enum SheetSystemSplitter {
             ))
         }
         return bands
+    }
+
+    /// Staves paired two by two when the gaps alternate small (inside a grand
+    /// staff) and large (between systems). nil when they don't alternate.
+    nonisolated private static func grandStaffPairs(staves: [Staff], gaps: [CGFloat]) -> [[Staff]]? {
+        guard staves.count >= 4, staves.count.isMultiple(of: 2) else { return nil }
+        let inside = stride(from: 0, to: gaps.count, by: 2).map { gaps[$0] }
+        let between = stride(from: 1, to: gaps.count, by: 2).map { gaps[$0] }
+        guard let widestInside = inside.max(), let tightestBetween = between.min(),
+              tightestBetween > widestInside * 1.12 else { return nil }
+        return stride(from: 0, to: staves.count, by: 2).map { [staves[$0], staves[$0 + 1]] }
+    }
+
+    /// Smallest gap that separates systems: the big step in the sorted gaps,
+    /// falling back to twice a staff's height.
+    nonisolated private static func systemBreakGap(gaps: [CGFloat], staves: [Staff]) -> CGFloat {
+        let staffHeight = staves.map { CGFloat($0.bottom - $0.top) }.reduce(0, +) / CGFloat(staves.count)
+        let fallback = staffHeight * 2.2
+        guard gaps.count >= 2 else { return fallback }
+
+        let sorted = gaps.sorted()
+        var bestRatio: CGFloat = 1
+        var breakGap = fallback
+        for (a, b) in zip(sorted, sorted.dropFirst()) where a > 0 {
+            let ratio = b / a
+            if ratio > bestRatio {
+                bestRatio = ratio
+                breakGap = (a + b) / 2
+            }
+        }
+        return bestRatio >= 1.4 ? breakGap : fallback
     }
 }
 

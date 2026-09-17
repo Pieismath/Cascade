@@ -78,6 +78,40 @@ private func note(_ step: String, _ octave: Int, _ duration: Int, voice: Int = 1
 
 // MARK: - Splitter
 
+/// Two systems crowded into the top third of a tall page. Nothing about this
+/// page is symmetric, so a profile read upside down, or bands that drift,
+/// cannot pass unnoticed.
+private func topHeavyPage(size: CGSize = CGSize(width: 1200, height: 2400)) -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    return UIGraphicsImageRenderer(size: size, format: format).image { ctx in
+        UIColor.white.setFill()
+        ctx.fill(CGRect(origin: .zero, size: size))
+        UIColor.black.setStroke()
+
+        let lineSpacing: CGFloat = 9
+        let staffHeight = lineSpacing * 4
+        let staffGap: CGFloat = 40      // inside a grand staff
+        let systemGap: CGFloat = 90     // between systems
+        var staffTop: CGFloat = 100
+
+        for system in 0..<2 {
+            for staff in 0..<2 {
+                for line in 0..<5 {
+                    let y = staffTop + CGFloat(line) * lineSpacing
+                    let path = UIBezierPath()
+                    path.move(to: CGPoint(x: 80, y: y))
+                    path.addLine(to: CGPoint(x: size.width - 80, y: y))
+                    path.lineWidth = 2
+                    path.stroke()
+                }
+                staffTop += staffHeight + (staff == 0 ? staffGap : systemGap)
+            }
+            _ = system
+        }
+    }
+}
+
 @Suite("SheetSystemSplitter")
 struct SheetSystemSplitterTests {
 
@@ -113,6 +147,28 @@ struct SheetSystemSplitterTests {
         let crops = SheetSystemSplitter.split(page: blank)
         #expect(crops.count == 1)
         #expect(crops[0].size == blank.size)
+    }
+
+    @Test("Systems are found where the music actually is, right way up")
+    func bandsMatchPagePosition() throws {
+        let page = topHeavyPage()
+        let systems = try #require(SheetSystemSplitter.detectSystems(in: page))
+        #expect(systems.count == 2)
+        #expect(systems.allSatisfy { $0.staffCount == 2 })
+        // Everything drawn sits above y=500 of a 2400pt page; reading the
+        // profile bottom-up used to land the bands at the other end.
+        #expect(systems[0].rect.minY < 120)
+        #expect(systems.last!.rect.maxY < 700)
+    }
+
+    @Test("A staff missing a line is still a staff")
+    func staffWithMissingLine() throws {
+        // First staff has four of its five lines (the middle one is gone).
+        let rows = [100, 110, 130, 140, 300, 310, 320, 330, 340]
+        let staves = SheetSystemSplitter.groupIntoStaves(lineRows: rows)
+        try #require(staves.count == 2)
+        #expect(staves[0].top == 100 && staves[0].bottom == 140)
+        #expect(staves[1].top == 300 && staves[1].bottom == 340)
     }
 
     @Test("Staff grouping requires five evenly spaced lines")
