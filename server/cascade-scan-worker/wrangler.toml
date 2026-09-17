@@ -37,7 +37,7 @@ GEMINI_MODEL = "gemini-2.5-flash"
 # it to "gemini-2.5-pro" for better retries.
 # GEMINI_MODEL_HIGH = "gemini-2.5-pro"
 # "anthropic" or "gemini" — which provider answers first when both keys are set.
-PRIMARY_PROVIDER = "anthropic"
+PRIMARY_PROVIDER = "gemini"
 
 # Secrets (set with `npx wrangler secret put <NAME>`):
 #   SESSION_SECRET      — required; generate with: openssl rand -hex 32
