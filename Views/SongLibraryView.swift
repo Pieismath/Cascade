@@ -87,7 +87,7 @@ struct SongLibraryView: View {
                 Chip(text: "\(statsManager.currentStreak) day streak", icon: "flame.fill", tint: Brand.amber)
             }
             Button { showAbout = true } label: {
-                Image(systemName: "info")
+                CascadeIconView(.info, size: 18, color: Brand.textPrimary)
             }
             .buttonStyle(IconButtonStyle())
             .accessibilityLabel("About Cascade")
@@ -135,9 +135,7 @@ struct SongLibraryView: View {
                         Spacer()
                         ZStack {
                             Circle().fill(.white).frame(width: 52, height: 52)
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(Brand.ink)
+                            CascadeIconView(.play, size: 22, color: Brand.ink)
                                 .offset(x: 2)
                         }
                         .glow(Brand.teal, radius: 14, opacity: 0.6)
@@ -168,7 +166,7 @@ struct SongLibraryView: View {
             Button {
                 tabSelection = 1
             } label: {
-                Label("Add your first song", systemImage: "plus")
+                HStack(spacing: 8) { CascadeIconView(.plus, size: 16, color: Brand.ink); Text("Add your first song") }
             }
             .buttonStyle(.cascadePrimary)
         }
@@ -192,34 +190,30 @@ struct SongLibraryView: View {
 
     private var quickActions: some View {
         HStack(spacing: 10) {
-            quickAction("Scan", icon: "camera.viewfinder", tint: Brand.teal) { tabSelection = 1 }
-            quickAction("Import", icon: "doc.badge.plus", tint: Brand.amber) { tabSelection = 1 }
+            quickAction("Scan", glyph: .scan, tint: Brand.teal) { tabSelection = 1 }
+            quickAction("Import", glyph: .importFile, tint: Brand.amber) { tabSelection = 1 }
             NavigationLink {
                 ThemePickerView().environment(themeManager)
             } label: {
-                quickActionLabel("Theme", icon: "paintpalette", tint: Brand.violet)
+                quickActionLabel("Theme", glyph: .theme, tint: Brand.violet)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Customize theme, currently \(themeManager.selectedTheme.rawValue)")
-            quickAction("Awards", icon: "trophy", tint: Brand.coral) { tabSelection = 3 }
+            quickAction("Awards", glyph: .award, tint: Brand.coral) { tabSelection = 3 }
         }
     }
 
-    private func quickAction(_ title: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func quickAction(_ title: String, glyph: CascadeGlyph, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            quickActionLabel(title, icon: icon, tint: tint)
+            quickActionLabel(title, glyph: glyph, tint: tint)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
     }
 
-    private func quickActionLabel(_ title: String, icon: String, tint: Color) -> some View {
+    private func quickActionLabel(_ title: String, glyph: CascadeGlyph, tint: Color) -> some View {
         VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(tint.opacity(0.14), in: Circle())
+            IconBadge(glyph: glyph, tint: tint)
             Text(title)
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(Brand.textPrimary)
@@ -267,7 +261,7 @@ struct SongLibraryView: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionHeader("Your library", subtitle: "\(libraryVM.songs.count) piece\(libraryVM.songs.count == 1 ? "" : "s")") {
                 Button { tabSelection = 1 } label: {
-                    Image(systemName: "plus")
+                    CascadeIconView(.plus, size: 18, color: Brand.textPrimary)
                 }
                 .buttonStyle(IconButtonStyle())
                 .accessibilityLabel("Add music")
@@ -320,9 +314,7 @@ struct SongLibraryView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "play.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Brand.textSecondary)
+                CascadeIconView(.play, size: 14, color: Brand.textSecondary)
                     .frame(width: 34, height: 34)
                     .background(Brand.surfaceHigh, in: Circle())
             }

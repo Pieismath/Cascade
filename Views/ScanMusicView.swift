@@ -37,8 +37,8 @@ struct ScanMusicView: View {
 
                 if !statusText.isEmpty {
                     HStack(spacing: 8) {
-                        Image(systemName: statusText.localizedCaseInsensitiveContains("success") ? "checkmark.circle.fill" : "info.circle")
-                            .foregroundStyle(statusText.localizedCaseInsensitiveContains("success") ? Brand.mint : Brand.textSecondary)
+                        CascadeIconView(statusText.localizedCaseInsensitiveContains("success") ? .check : .info, size: 16,
+                                        color: statusText.localizedCaseInsensitiveContains("success") ? Brand.mint : Brand.textSecondary)
                         Text(statusText)
                             .font(.footnote)
                             .foregroundStyle(Brand.textSecondary)
@@ -101,11 +101,9 @@ struct ScanMusicView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 14, weight: .bold))
+                        CascadeIconView(.scan, size: 16, color: Brand.teal)
                         Text("Scan sheet music").eyebrowStyle(Brand.teal)
                     }
-                    .foregroundStyle(Brand.teal)
                     Text("Point your camera\nat a page.")
                         .font(CascadeFont.display(26))
                         .foregroundStyle(.white)
@@ -119,7 +117,7 @@ struct ScanMusicView: View {
                 .frame(height: 210, alignment: .topLeading)
             }
             .overlay(alignment: .bottomLeading) {
-                Chip(text: "Try a free sample", icon: "sparkles", tint: Brand.teal, filled: true)
+                Chip(text: "Try a free sample", tint: Brand.teal, filled: true)
                     .padding(.leading, 20)
                     .padding(.bottom, 40)
             }
@@ -135,11 +133,7 @@ struct ScanMusicView: View {
             isImporting = true
         } label: {
             HStack(spacing: 14) {
-                Image(systemName: "doc.badge.plus")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Brand.amber)
-                    .frame(width: 44, height: 44)
-                    .background(Brand.amber.opacity(0.14), in: Circle())
+                IconBadge(glyph: .importFile, tint: Brand.amber)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Import a MusicXML file")
                         .font(.system(size: 16, weight: .semibold, design: .rounded))
@@ -149,9 +143,7 @@ struct ScanMusicView: View {
                         .foregroundStyle(Brand.textSecondary)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Brand.textTertiary)
+                CascadeIconView(.chevronRight, size: 16, color: Brand.textTertiary)
             }
             .cascadeCard(padding: 12, radius: 20)
         }
@@ -207,9 +199,7 @@ struct ScanMusicView: View {
                     }
                 }
                 Spacer(minLength: 6)
-                Image(systemName: libraryVM.songs.contains { $0.title == demo.title } ? "checkmark" : "plus")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Brand.textPrimary)
+                CascadeIconView(libraryVM.songs.contains { $0.title == demo.title } ? .check : .plus, size: 16, color: Brand.textPrimary)
                     .frame(width: 34, height: 34)
                     .background(Brand.surfaceHigh, in: Circle())
             }

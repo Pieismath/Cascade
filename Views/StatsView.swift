@@ -2,7 +2,9 @@
 //  StatsView.swift
 //  MyPianoInstructor
 //
-//  Created by Jason Fang on 2/13/26.
+//  Progress: three visuals instead of a grid of boxes — the streak, a
+//  fortnight of practice time, and a five-week heat calendar — then awards,
+//  reminders, and sharing.
 //
 
 import SwiftUI
@@ -17,374 +19,269 @@ struct StatsView: View {
 
     @State private var selectedDayString: String? = nil
 
-    // Must match the formatter that writes practice-day keys, or calendar
-    // squares stop lining up with recorded days.
+    // Must match the formatter that writes practice-day keys.
     private let dateFormatter = PracticeStatsManager.dayFormatter
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-
-                // MARK: - Header
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Keep the streak alive").eyebrowStyle()
-                    Text("Progress")
-                        .font(CascadeFont.display(36))
-                        .foregroundStyle(Brand.textPrimary)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 26) {
+                header
+                streakHero
+                timeCard
+                calendarCard
+                if let day = selectedDayString {
+                    dayDetail(day)
                 }
-                .padding(.top, 8)
-
-                // MARK: - Stats Cards
-                LazyVGrid(columns: [
-                    GridItem(.flexible()), GridItem(.flexible())
-                ], spacing: 14) {
-
-                    statsCard(icon: "clock", value: statsManager.formattedTotalTime, label: "Practice time", color: Brand.teal)
-                    statsCard(icon: "flame", value: "\(statsManager.currentStreak)", label: "Day streak", color: Brand.amber, animateIcon: true)
-                    statsCard(icon: "music.note.list", value: "\(libraryVM.songs.count)", label: "Pieces", color: Brand.violet)
-                    statsCard(icon: "checkmark", value: "\(statsManager.songsCompleted)", label: "Completed", color: Brand.mint)
-                    statsCard(icon: "play", value: "\(statsManager.sessionsCount)", label: "Sessions", color: Brand.teal)
-                    statsCard(icon: "trophy", value: "\(achievementManager.earnedCount)/\(achievementManager.totalCount)", label: "Awards", color: Brand.coral)
+                awardsStrip
+                remindersRow
+                Button { shareProgressCard() } label: {
+                    HStack(spacing: 8) { CascadeIconView(.share, size: 16, color: Brand.textPrimary); Text("Share my progress") }
                 }
-
-                // MARK: - Personal Best Streak
-                if statsManager.longestStreak > 0 {
-                    HStack(spacing: 12) {
-                        Image(systemName: "crown.fill")
-                            .foregroundColor(.yellow)
-                            .font(.title3)
-                            .symbolEffect(.bounce, value: statsManager.longestStreak)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Personal Best Streak")
-                                .font(.caption).bold()
-                                .foregroundColor(.secondary)
-                            HStack(spacing: 4) {
-                                AnimatedCounter(value: statsManager.longestStreak, font: .title3.bold())
-                                Text("days in a row")
-                                    .font(.subheadline)
-                            }
-                        }
-                        Spacer()
-                    }
-                    .cascadeCard(padding: 16, radius: 20)
-                }
-
-                // MARK: - Practice Timeline Chart
-                if !statsManager.recentDailySummaries.filter({ $0.totalSeconds > 0 }).isEmpty {
-                    practiceTimeChart
-                }
-
-                // MARK: - Recent Achievements
-                recentAchievementsSection
-
-                // MARK: - Quick Links
-                HStack(spacing: 12) {
-                    NavigationLink {
-                        AchievementsView()
-                            .environment(achievementManager)
-                    } label: {
-                        quickLinkCard(icon: "trophy", label: "All awards", color: Brand.coral)
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
-                        ThemePickerView()
-                            .environment(themeManager)
-                    } label: {
-                        quickLinkCard(icon: "paintpalette", label: "Note colours", color: Brand.violet)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                // MARK: - Practice Reminders
-                practiceRemindersCard
-
-                // MARK: - Practice Calendar
-                VStack(alignment: .leading, spacing: 12) {
-                    SectionHeader("Practice calendar")
-
-                    practiceCalendar
-                }
-
-                // MARK: - Day Detail (songs practiced)
-                if let dayStr = selectedDayString {
-                    dayDetailSection(dayStr)
-                }
-
-                // MARK: - Motivational Message
-                VStack(spacing: 8) {
-                    Image(systemName: motivationalIcon)
-                        .font(.system(size: 36))
-                        .foregroundColor(AppTheme.accent)
-
-                    Text(motivationalMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 24)
-
-                // MARK: - Share Progress
-                Button {
-                    shareProgressCard()
-                } label: {
-                    Label("Share my progress", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(.cascadePrimary)
-                .padding(.bottom, 8)
+                .buttonStyle(.cascadeSecondary)
+                .padding(.bottom, 12)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 20)
         }
         .stageBackground()
         .navigationBarHidden(true)
         .onAppear {
-            // Evaluate achievements whenever stats view appears
-            achievementManager.evaluate(
-                stats: statsManager,
-                songsInLibrary: libraryVM.songs.count,
-                bestAccuracy: 0
-            )
+            achievementManager.evaluate(stats: statsManager, songsInLibrary: libraryVM.songs.count, bestAccuracy: 0)
         }
     }
 
-    // MARK: - Recent Achievements
+    // MARK: - Header
 
-    private var recentAchievementsSection: some View {
-        let recent = achievementManager.achievements
-            .filter(\.isEarned)
-            .sorted { ($0.dateEarned ?? .distantPast) > ($1.dateEarned ?? .distantPast) }
-            .prefix(3)
+    private var header: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(statsManager.currentStreak > 0 ? "Keep it going" : "Every day counts").eyebrowStyle()
+                Text("Progress")
+                    .font(CascadeFont.display(36))
+                    .foregroundStyle(Brand.textPrimary)
+            }
+            Spacer()
+            NavigationLink {
+                AchievementsView().environment(achievementManager)
+            } label: {
+                CascadeIconView(.award, size: 18, color: Brand.textPrimary)
+            }
+            .buttonStyle(IconButtonStyle())
+            .accessibilityLabel("All awards")
+        }
+        .padding(.top, 8)
+    }
 
-        return Group {
-            if !recent.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Recent Achievements")
-                            .font(.headline)
-                        Spacer()
-                        NavigationLink {
-                            AchievementsView()
-                                .environment(achievementManager)
-                        } label: {
-                            Text("See All")
-                                .font(.caption).bold()
-                                .foregroundColor(AppTheme.accent)
-                        }
-                    }
+    // MARK: - 1. Streak
 
-                    ForEach(Array(recent)) { achievement in
-                        HStack(spacing: 12) {
+    private var streakHero: some View {
+        let streak = statsManager.currentStreak
+        let week = lastSevenDays()
+        return ZStack(alignment: .topTrailing) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("\(streak)")
+                        .font(CascadeFont.number(72))
+                        .foregroundStyle(Brand.textPrimary)
+                        .contentTransition(.numericText())
+                    Text("day streak")
+                        .font(CascadeFont.display(22))
+                        .foregroundStyle(Brand.textSecondary)
+                }
+                Text(streakLine)
+                    .font(.subheadline)
+                    .foregroundStyle(Brand.textSecondary)
+
+                // Last seven days
+                HStack(spacing: 8) {
+                    ForEach(week, id: \.key) { day in
+                        VStack(spacing: 6) {
                             ZStack {
                                 Circle()
-                                    .fill(achievementColor(achievement).opacity(0.2))
-                                    .frame(width: 40, height: 40)
-                                Image(systemName: achievement.icon)
-                                    .foregroundColor(achievementColor(achievement))
+                                    .fill(day.practiced ? Brand.amber : Brand.surfaceHigh)
+                                    .frame(width: 30, height: 30)
+                                if day.practiced {
+                                    CascadeIconView(.check, size: 13, color: Brand.ink, weight: 2.6)
+                                }
+                                if day.isToday {
+                                    Circle().strokeBorder(Brand.amber, lineWidth: 2).frame(width: 36, height: 36)
+                                }
                             }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(achievement.title)
-                                    .font(.subheadline).bold()
-                                Text(achievement.description)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            if let date = achievement.dateEarned {
-                                Text(date, style: .date)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.secondary)
-                            }
+                            .frame(width: 36, height: 36)
+                            Text(day.label)
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(day.isToday ? Brand.textPrimary : Brand.textTertiary)
                         }
-                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity)
                     }
                 }
-                .cascadeCard(padding: 16, radius: 14)
             }
-        }
-    }
-
-    private func achievementColor(_ achievement: Achievement) -> Color {
-        switch achievement.category {
-        case .practice: return .indigo
-        case .mastery: return .orange
-        case .dedication: return .green
-        case .explorer: return .purple
-        }
-    }
-
-    // MARK: - Quick Link Card
-
-    private func quickLinkCard(icon: String, label: String, color: Color) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(color)
-                .frame(width: 40, height: 40)
-                .background(color.opacity(0.14), in: Circle())
-            Text(label)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Brand.textPrimary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    // MARK: - Practice Reminders Card
-
-    private var practiceRemindersCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "bell")
-                    .foregroundStyle(Brand.teal)
-                Text("Practice reminders")
-                    .font(.headline)
-            }
-
-            Toggle("Daily Reminder", isOn: Binding(
-                get: { notificationManager.dailyReminderEnabled },
-                set: { newVal in
-                    if newVal && !notificationManager.isAuthorized {
-                        Task {
-                            let granted = await notificationManager.requestPermission()
-                            if granted {
-                                notificationManager.dailyReminderEnabled = true
-                            }
-                        }
-                    } else {
-                        notificationManager.dailyReminderEnabled = newVal
-                    }
+            .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                ZStack {
+                    Brand.surface
+                    RadialGradient(colors: [Brand.amber.opacity(streak > 0 ? 0.28 : 0.08), .clear],
+                                   center: .init(x: 0.92, y: 0.12), startRadius: 0, endRadius: 260)
                 }
-            ))
-            .tint(AppTheme.accent)
-
-            if notificationManager.dailyReminderEnabled {
-                HStack {
-                    Text("Reminder Time")
-                        .font(.subheadline)
-                    Spacer()
-                    DatePicker(
-                        "",
-                        selection: Binding(
-                            get: { notificationManager.reminderTime },
-                            set: { notificationManager.reminderTime = $0 }
-                        ),
-                        displayedComponents: .hourAndMinute
-                    )
-                    .labelsHidden()
-                }
+                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             }
+            .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
+
+            CascadeIconView(.flame, size: 64, color: Brand.amber.opacity(streak > 0 ? 1 : 0.22))
+                .glow(Brand.amber, radius: 22, opacity: streak > 0 ? 0.7 : 0)
+                .padding(20)
         }
-        .cascadeCard(padding: 16, radius: 14)
-    }
-
-    // MARK: - Components
-
-    private func statsCard(icon: String, value: String, label: String, color: Color, animateIcon: Bool = false) -> some View {
-        VStack(spacing: 8) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(color)
-                    .frame(width: 32, height: 32)
-                    .background(color.opacity(0.14), in: Circle())
-                    .symbolEffect(.bounce, value: animateIcon && statsManager.currentStreak > 0)
-                Spacer()
-            }
-
-            HStack {
-                Text(value)
-                    .font(CascadeFont.number(26))
-                    .foregroundStyle(Brand.textPrimary)
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                Spacer()
-            }
-
-            HStack {
-                Text(label)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Spacer()
-            }
-        }
-        .cascadeCard(padding: 14, radius: 14)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
+        .accessibilityLabel("\(streak) day streak. \(streakLine)")
     }
 
-    // MARK: - Practice Calendar (properly aligned to weekday columns)
+    private var streakLine: String {
+        let s = statsManager.currentStreak
+        let best = statsManager.longestStreak
+        if s == 0 { return "Practice today to start a streak." }
+        if s >= best && best > 1 { return "Your best ever. Don't stop now." }
+        if s >= 7 { return "A full week. Best is \(best)." }
+        return "Best so far: \(best) day\(best == 1 ? "" : "s")."
+    }
 
-    private var practiceCalendar: some View {
+    private struct WeekDay { let key: String; let label: String; let practiced: Bool; let isToday: Bool }
+
+    private func lastSevenDays() -> [WeekDay] {
+        let cal = Calendar.current
+        let letters = ["S", "M", "T", "W", "T", "F", "S"]
+        return (0..<7).reversed().compactMap { offset in
+            guard let date = cal.date(byAdding: .day, value: -offset, to: Date()) else { return nil }
+            let key = dateFormatter.string(from: date)
+            return WeekDay(key: key, label: letters[cal.component(.weekday, from: date) - 1],
+                           practiced: statsManager.practiceDays.contains(key), isToday: offset == 0)
+        }
+    }
+
+    // MARK: - 2. Time
+
+    private var timeCard: some View {
+        let days = statsManager.recentDailySummaries
+        let fortnight = days.reduce(0) { $0 + $1.totalSeconds }
+        let todayKey = dateFormatter.string(from: Date())
+        let peakMinutes = max(5.0, Double(days.map(\.totalSeconds).max() ?? 0) / 60.0)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Last 14 days").eyebrowStyle()
+                    Text(formatMinutes(fortnight))
+                        .font(CascadeFont.number(36))
+                        .foregroundStyle(Brand.textPrimary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("All time").eyebrowStyle()
+                    Text(statsManager.formattedTotalTime)
+                        .font(CascadeFont.number(20))
+                        .foregroundStyle(Brand.textSecondary)
+                }
+            }
+
+            Chart(days) { day in
+                let minutes = Double(day.totalSeconds) / 60.0
+                BarMark(
+                    x: .value("Day", day.date),
+                    y: .value("Minutes", max(minutes, peakMinutes * 0.06))
+                )
+                .foregroundStyle(day.date == todayKey ? Brand.amber : (day.totalSeconds > 0 ? Brand.teal : Brand.surfaceHigh))
+                .cornerRadius(4)
+            }
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .chartLegend(.hidden)
+            .chartYScale(domain: 0...(peakMinutes * 1.1))
+            .frame(height: 90)
+
+            HStack {
+                Text(shortDate(days.first?.date))
+                Spacer()
+                Text("Today")
+            }
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(Brand.textTertiary)
+
+            if fortnight == 0 {
+                Text("No sessions yet. Even five minutes lights up a bar.")
+                    .font(.caption)
+                    .foregroundStyle(Brand.textSecondary)
+            } else {
+                HStack(spacing: 14) {
+                    inlineStat("\(statsManager.sessionsCount)", "sessions")
+                    inlineStat("\(statsManager.songsCompleted)", "completed")
+                    inlineStat("\(libraryVM.songs.count)", "pieces")
+                }
+            }
+        }
+        .cascadeCard(padding: 20, radius: 26)
+    }
+
+    private func inlineStat(_ value: String, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            Text(value).font(CascadeFont.number(15)).foregroundStyle(Brand.textPrimary)
+            Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(Brand.textTertiary)
+        }
+    }
+
+    // MARK: - 3. Calendar heat map
+
+    private var calendarCard: some View {
         let calendar = Calendar.current
         let today = Date()
-
-        let dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-
         let todayWeekday = calendar.component(.weekday, from: today)
         let daysUntilSaturday = todayWeekday == 7 ? 0 : (7 - todayWeekday)
         let thisSaturday = calendar.date(byAdding: .day, value: daysUntilSaturday, to: today) ?? today
         let startDate = calendar.date(byAdding: .day, value: -34, to: thisSaturday) ?? today
+        let days: [Date] = (0..<35).compactMap { calendar.date(byAdding: .day, value: $0, to: startDate) }
+        var seconds: [String: Int] = [:]
+        for s in statsManager.dailySummaries { seconds[s.date] = s.totalSeconds }
+        let peak = max(300, seconds.values.max() ?? 300)
+        let letters = ["S", "M", "T", "W", "T", "F", "S"]
 
-        let days: [Date] = (0..<35).compactMap {
-            calendar.date(byAdding: .day, value: $0, to: startDate)
-        }
-
-        return VStack(spacing: 4) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
-                ForEach(dayLabels, id: \.self) { label in
-                    Text(label)
-                        .font(.caption2).bold()
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity)
-                }
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Five weeks").eyebrowStyle()
+                Spacer()
+                Text("\(statsManager.practiceDays.count) days practiced")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Brand.textSecondary)
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 4) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
+                ForEach(letters.indices, id: \.self) { i in
+                    Text(letters[i])
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(Brand.textTertiary)
+                }
                 ForEach(days, id: \.self) { date in
-                    let dateStr = dateFormatter.string(from: date)
-                    let practiced = statsManager.practiceDays.contains(dateStr)
+                    let key = dateFormatter.string(from: date)
+                    let practiced = statsManager.practiceDays.contains(key)
                     let isToday = calendar.isDateInToday(date)
                     let isFuture = date > today
-                    let isSelected = selectedDayString == dateStr
+                    let intensity = min(1, Double(seconds[key] ?? (practiced ? 300 : 0)) / Double(peak))
+                    let selected = selectedDayString == key
 
                     Button {
-                        if practiced {
-                            if selectedDayString == dateStr {
-                                selectedDayString = nil
-                            } else {
-                                selectedDayString = dateStr
-                            }
+                        guard practiced else { return }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedDayString = selected ? nil : key
                         }
                     } label: {
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(
-                                practiced
-                                ? Brand.teal
-                                : isFuture
-                                    ? Color.clear
-                                    : Brand.surfaceHigh
-                            )
-                            .frame(height: 32)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(practiced ? Brand.teal.opacity(0.35 + 0.65 * intensity) : (isFuture ? Color.clear : Brand.surfaceHigh))
+                            .aspectRatio(1, contentMode: .fit)
                             .overlay(
                                 Text("\(calendar.component(.day, from: date))")
-                                    .font(.caption2).bold()
-                                    .foregroundColor(
-                                        practiced ? Brand.ink
-                                        : isFuture ? .clear
-                                        : .secondary
-                                    )
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(practiced ? Brand.ink : (isFuture ? .clear : Brand.textTertiary))
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(
-                                        isSelected ? AppTheme.accent
-                                        : isToday && selectedDayString == nil ? AppTheme.accent
-                                        : .clear,
-                                        lineWidth: 2.5
-                                    )
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(selected ? Brand.amber : (isToday ? Brand.textPrimary.opacity(0.7) : .clear), lineWidth: 2)
                             )
                     }
                     .buttonStyle(.plain)
@@ -393,154 +290,168 @@ struct StatsView: View {
                 }
             }
         }
-        .cascadeCard(padding: 16, radius: 14)
+        .cascadeCard(padding: 18, radius: 26)
     }
 
-    // MARK: - Day Detail Section
-
-    private func dayDetailSection(_ dateStr: String) -> some View {
-        let entries = statsManager.songsForDay(dateStr)
-        let displayDate = readableDate(dateStr)
-
+    private func dayDetail(_ key: String) -> some View {
+        let entries = statsManager.songsForDay(key)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Image(systemName: "calendar.badge.checkmark")
-                    .foregroundColor(.green)
-                Text(displayDate)
-                    .font(.headline)
+                Text(readableDate(key)).eyebrowStyle(Brand.teal)
                 Spacer()
-                Button {
-                    selectedDayString = nil
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                Button { withAnimation { selectedDayString = nil } } label: {
+                    CascadeIconView(.xmark, size: 12, color: Brand.textTertiary)
                 }
+                .buttonStyle(.plain)
             }
-
             if entries.isEmpty {
-                HStack(spacing: 8) {
-                    Image(systemName: "music.note")
-                        .foregroundColor(.secondary)
-                    Text("Practiced this day (no song details recorded)")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 4)
+                Text("Practiced, but no songs were logged that day.")
+                    .font(.subheadline).foregroundStyle(Brand.textSecondary)
             } else {
                 ForEach(entries) { entry in
                     HStack {
-                        Image(systemName: "music.note")
-                            .foregroundColor(AppTheme.accent)
-                            .frame(width: 28, height: 28)
-                            .background(AppTheme.accent.opacity(0.1))
-                            .cornerRadius(6)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.songTitle)
-                                .font(.subheadline).bold()
-                            Text(formatSessionDuration(entry.durationSeconds))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                        CascadeIconView(.music, size: 14, color: Brand.teal)
+                        Text(entry.songTitle.isEmpty ? "Untitled" : entry.songTitle)
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(Brand.textPrimary)
                         Spacer()
+                        Text(formatMinutes(entry.durationSeconds))
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(Brand.textSecondary)
                     }
-                    .padding(.vertical, 2)
                 }
             }
         }
-        .cascadeCard(padding: 16, radius: 14)
+        .cascadeCard(padding: 16, radius: 20, raised: true)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
+    // MARK: - 4. Awards
+
+    private var awardsStrip: some View {
+        let all = achievementManager.achievements
+        let earned = all.filter(\.isEarned).sorted { ($0.dateEarned ?? .distantPast) > ($1.dateEarned ?? .distantPast) }
+        let next = Array(all.filter { !$0.isEarned }.prefix(3))
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Awards · \(achievementManager.earnedCount) of \(achievementManager.totalCount)").eyebrowStyle()
+                Spacer()
+                NavigationLink {
+                    AchievementsView().environment(achievementManager)
+                } label: {
+                    Text("See all")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(Brand.teal)
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(earned) { a in badge(a, earned: true) }
+                    ForEach(next) { a in badge(a, earned: false) }
+                }
+            }
+        }
+        .cascadeCard(padding: 18, radius: 26)
+    }
+
+    private func badge(_ a: Achievement, earned: Bool) -> some View {
+        let tint = badgeColor(a)
+        return VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(earned ? tint.opacity(0.18) : Brand.surfaceHigh)
+                    .frame(width: 56, height: 56)
+                Image(systemName: a.icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(earned ? tint : Brand.textTertiary)
+            }
+            .glow(tint, radius: 12, opacity: earned ? 0.5 : 0)
+            Text(a.title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(earned ? Brand.textPrimary : Brand.textTertiary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: 84)
+        .opacity(earned ? 1 : 0.7)
+    }
+
+    private func badgeColor(_ a: Achievement) -> Color {
+        switch a.category {
+        case .practice: return Brand.teal
+        case .mastery: return Brand.amber
+        case .dedication: return Brand.mint
+        case .explorer: return Brand.violet
+        }
+    }
+
+    // MARK: - 5. Reminders
+
+    private var remindersRow: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                IconBadge(glyph: .bell, tint: Brand.teal, diameter: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Daily reminder")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Brand.textPrimary)
+                    Text(notificationManager.dailyReminderEnabled
+                         ? "At \(notificationManager.reminderTime.formatted(date: .omitted, time: .shortened))"
+                         : "A nudge to keep the streak")
+                        .font(.caption)
+                        .foregroundStyle(Brand.textSecondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { notificationManager.dailyReminderEnabled },
+                    set: { newVal in
+                        if newVal && !notificationManager.isAuthorized {
+                            Task {
+                                let granted = await notificationManager.requestPermission()
+                                if granted { notificationManager.dailyReminderEnabled = true }
+                            }
+                        } else {
+                            notificationManager.dailyReminderEnabled = newVal
+                        }
+                    }
+                ))
+                .labelsHidden()
+                .tint(Brand.teal)
+            }
+            if notificationManager.dailyReminderEnabled {
+                HStack {
+                    Text("Time").font(.subheadline).foregroundStyle(Brand.textSecondary)
+                    Spacer()
+                    DatePicker("", selection: Binding(
+                        get: { notificationManager.reminderTime },
+                        set: { notificationManager.reminderTime = $0 }
+                    ), displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                }
+            }
+        }
+        .cascadeCard(padding: 14, radius: 22)
     }
 
     // MARK: - Helpers
 
-    private func readableDate(_ dateStr: String) -> String {
-        guard let date = PracticeStatsManager.dayFormatter.date(from: dateStr) else { return dateStr }
-
-        let outputFormatter = DateFormatter()
-        outputFormatter.dateStyle = .medium
-        return outputFormatter.string(from: date)
+    private func formatMinutes(_ seconds: Int) -> String {
+        let h = seconds / 3600, m = (seconds % 3600) / 60
+        if h > 0 { return "\(h)h \(m)m" }
+        return "\(m)m"
     }
 
-    private func formatSessionDuration(_ seconds: Int) -> String {
-        let mins = seconds / 60
-        let secs = seconds % 60
-        if mins > 0 {
-            return "\(mins)m \(secs)s"
-        }
-        return "\(secs)s"
+    private func shortDate(_ key: String?) -> String {
+        guard let key, let date = dateFormatter.date(from: key) else { return "" }
+        return date.formatted(.dateTime.month(.abbreviated).day())
     }
 
-    private var motivationalIcon: String {
-        let streak = statsManager.currentStreak
-        if streak >= 7 { return "star.fill" }
-        if streak >= 3 { return "hand.thumbsup.fill" }
-        if streak >= 1 { return "music.note" }
-        return "pianokeys"
+    private func readableDate(_ key: String) -> String {
+        guard let date = dateFormatter.date(from: key) else { return key }
+        return date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
     }
 
-    private var motivationalMessage: String {
-        let streak = statsManager.currentStreak
-        if streak >= 7 { return "Amazing! \(streak)-day streak! You're a dedicated pianist!" }
-        if streak >= 3 { return "Great job! \(streak) days in a row. Keep it up!" }
-        if streak >= 1 { return "Nice! You practiced today. Consistency is key!" }
-        return "Start a practice session to begin your journey!"
-    }
-
-    // MARK: - Animated Counter
-
-    private struct AnimatedCounter: View {
-        let value: Int
-        let font: Font
-        @State private var displayed: Int = 0
-
-        var body: some View {
-            Text("\(displayed)")
-                .font(font)
-                .contentTransition(.numericText())
-                .onAppear {
-                    withAnimation(.easeOut(duration: 1.0)) { displayed = value }
-                }
-                .onChange(of: value) { _, n in
-                    withAnimation(.easeOut(duration: 0.6)) { displayed = n }
-                }
-        }
-    }
-
-    // MARK: - Practice Time Chart
-
-    private var practiceTimeChart: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Practice Time (14 days)")
-                .font(.headline)
-
-            Chart(statsManager.recentDailySummaries) { summary in
-                BarMark(
-                    x: .value("Date", shortDateLabel(summary.date)),
-                    y: .value("Minutes", Double(summary.totalSeconds) / 60.0)
-                )
-                .foregroundStyle(AppTheme.accentGradient)
-                .cornerRadius(4)
-            }
-            .chartXAxis {
-                AxisMarks { AxisValueLabel().font(.system(size: 9)) }
-            }
-            .chartYAxisLabel("min")
-            .frame(height: 130)
-            .animation(.easeOut(duration: 0.8), value: statsManager.recentDailySummaries.map(\.totalSeconds))
-        }
-        .cascadeCard(padding: 16, radius: 14)
-    }
-
-    private func shortDateLabel(_ dateStr: String) -> String {
-        guard let d = PracticeStatsManager.dayFormatter.date(from: dateStr) else { return dateStr }
-        let o = DateFormatter()
-        o.dateFormat = "M/d"
-        return o.string(from: d)
-    }
-
-    // MARK: - Share Progress Card
-
-    @MainActor
     private func shareProgressCard() {
         let card = ProgressShareCard(
             streak: statsManager.currentStreak,

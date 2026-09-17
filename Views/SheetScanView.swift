@@ -49,6 +49,7 @@ struct SheetScanView: View {
     @State private var showCamera = false
     @State private var showFileImporter = false
     @State private var showSettings = false
+    @State private var showPrivacyInfo = false
     @State private var errorMessage: String? = nil
     @State private var recognitionTask: Task<Void, Never>? = nil
 
@@ -132,8 +133,9 @@ struct SheetScanView: View {
                     Button {
                         showSettings = true
                     } label: {
-                        Image(systemName: "gearshape")
+                        CascadeIconView(.gear, size: 18, color: Brand.textPrimary)
                     }
+                    .buttonStyle(IconButtonStyle())
                     .accessibilityLabel("Scan settings")
                 }
             }
@@ -195,16 +197,8 @@ struct SheetScanView: View {
     // MARK: - Phase 1: Collect Pages
 
     private var collectPagesView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Sheet music in").eyebrowStyle(Brand.teal)
-                    Text("Photograph a page or import a PDF. Cascade turns it into a falling-note lesson and a video.")
-                        .font(CascadeFont.display(22))
-                        .foregroundStyle(Brand.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 22) {
 
                 if activeSample != nil {
                     sampleLoadedNote
@@ -223,103 +217,178 @@ struct SheetScanView: View {
                     unavailableCard
                 }
 
-                // Source buttons
-                VStack(spacing: 10) {
-                    sourceButton(
-                        icon: "camera.viewfinder",
-                        title: "Scan with Camera",
-                        subtitle: cameraAvailable
-                            ? "Auto-crops and straightens each page"
-                            : "Not available on this device",
-                        disabled: !cameraAvailable
-                    ) {
-                        showCamera = true
-                    }
-
-                    sourceButton(
-                        icon: "doc.richtext",
-                        title: "Import PDF or Images",
-                        subtitle: "PDF pages are converted automatically",
-                        disabled: false
-                    ) {
-                        showFileImporter = true
-                    }
-                }
-
                 if pages.isEmpty {
+                    // Two big source tiles
+                    HStack(spacing: 12) {
+                        sourceTile(glyph: .camera, title: "Camera", subtitle: cameraAvailable ? "Photograph pages" : "Not on this device",
+                                   tint: Brand.teal, disabled: !cameraAvailable) { showCamera = true }
+                        sourceTile(glyph: .pdf, title: "PDF or photo", subtitle: "From Files",
+                                   tint: Brand.amber, disabled: false) { showFileImporter = true }
+                    }
+
                     samplesSection
+                } else {
+                    pagesReady
                 }
 
-                // Page thumbnails
-                if !pages.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("\(pages.count) page\(pages.count == 1 ? "" : "s") ready")
-                                .font(.headline)
-                            Spacer()
-                            Button("Clear All", role: .destructive) {
-                                pages.removeAll()
-                                activeSample = nil
-                            }
-                            .font(.caption)
-                        }
+                footnote
 
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                ForEach(pages.indices, id: \.self) { i in
-                                    ZStack(alignment: .topTrailing) {
-                                        Image(uiImage: pages[i])
-                                            .resizable()
-                                            .scaledToFit()
-                                            .frame(height: 130)
-                                            .cornerRadius(8)
-                                            .overlay(
-                                                RoundedRectangle(cornerRadius: 8)
-                                                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
-                                            )
-                                        Button {
-                                            pages.remove(at: i)
-                                            activeSample = nil
-                                        } label: {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .font(.title3)
-                                                .foregroundStyle(.white, .black.opacity(0.6))
-                                        }
-                                        .padding(4)
-                                        .accessibilityLabel("Remove page \(i + 1)")
-                                    }
-                                }
-                            }
-                        }
-
-                        if activeSample == nil, pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan {
-                            Label(
-                                "That's a lot of pages for one scan. For best results scan up to \(ClaudeSheetMusicRecognizer.maxPagesPerScan) pages at a time.",
-                                systemImage: "exclamationmark.triangle"
-                            )
-                            .font(.caption)
-                            .foregroundColor(.orange)
-                        }
-                    }
-                    .padding(.top, 4)
-
-                    // Recognize button
-                    Button {
-                        startRecognition()
-                    } label: {
-                        Label(activeSample == nil ? "Convert to Falling Notes" : "Convert Sample (free)", systemImage: "wand.and.stars")
-                    }
-                    .buttonStyle(.cascadePrimary)
-                    .opacity(canRecognize ? 1 : 0.45)
-                    .disabled(!canRecognize || pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan)
-                }
-
-                privacyNote
-
-                Spacer(minLength: 30)
+                Spacer(minLength: 20)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
         }
+        .sheet(isPresented: $showPrivacyInfo) { privacySheet }
+    }
+
+    private func sourceTile(glyph: CascadeGlyph, title: String, subtitle: String, tint: Color, disabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 14) {
+                IconBadge(glyph: glyph, tint: tint, diameter: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Brand.textPrimary)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Brand.textSecondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .cascadeCard(padding: 16, radius: 22)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.5 : 1)
+        .accessibilityLabel(title == "Camera" ? "Scan with Camera" : "Import PDF or Images")
+    }
+
+    /// Pages loaded: thumbnails + the one button that matters.
+    private var pagesReady: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("\(pages.count) page\(pages.count == 1 ? "" : "s") ready")
+                    .font(CascadeFont.display(22))
+                    .foregroundStyle(Brand.textPrimary)
+                Spacer()
+                Button("Clear") {
+                    pages.removeAll()
+                    activeSample = nil
+                }
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(Brand.textSecondary)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(pages.indices, id: \.self) { i in
+                        ZStack(alignment: .topTrailing) {
+                            Image(uiImage: pages[i])
+                                .resizable()
+                                .scaledToFit()
+                                .frame(height: 150)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
+                            Button {
+                                pages.remove(at: i)
+                                activeSample = nil
+                            } label: {
+                                CascadeIconView(.xmark, size: 12, color: .white)
+                                    .frame(width: 24, height: 24)
+                                    .background(.black.opacity(0.6), in: Circle())
+                            }
+                            .padding(5)
+                            .accessibilityLabel("Remove page \(i + 1)")
+                        }
+                    }
+                    if activeSample == nil {
+                        Button { showCamera = true } label: {
+                            VStack(spacing: 6) {
+                                CascadeIconView(.plus, size: 18, color: Brand.textSecondary)
+                                Text("Add page").font(.caption).foregroundStyle(Brand.textSecondary)
+                            }
+                            .frame(width: 100, height: 150)
+                            .background(Brand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.hairline, style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!cameraAvailable)
+                    }
+                }
+            }
+
+            if activeSample == nil, pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan {
+                Text("Scan up to \(ClaudeSheetMusicRecognizer.maxPagesPerScan) pages at a time.")
+                    .font(.caption)
+                    .foregroundStyle(Brand.amber)
+            }
+            if activeSample == nil, creditsNeeded > 1, account.isSignedIn {
+                Text("This scan uses \(creditsNeeded) credits (\(account.pagesPerCredit) pages each).")
+                    .font(.caption)
+                    .foregroundStyle(Brand.textSecondary)
+            }
+
+            Button {
+                startRecognition()
+            } label: {
+                HStack(spacing: 8) {
+                    CascadeIconView(.sparkle, size: 16, color: Brand.ink)
+                    Text(activeSample == nil ? "Convert to falling notes" : "Convert sample (free)")
+                }
+            }
+            .buttonStyle(.cascadePrimary)
+            .opacity(canRecognize ? 1 : 0.45)
+            .disabled(!canRecognize || (activeSample == nil && pages.count > ClaudeSheetMusicRecognizer.maxPagesPerScan))
+            .accessibilityLabel(activeSample == nil ? "Convert to Falling Notes" : "Convert Sample")
+        }
+    }
+
+    /// One quiet line; the full explanation lives behind it.
+    private var footnote: some View {
+        Button { showPrivacyInfo = true } label: {
+            HStack(spacing: 6) {
+                CascadeIconView(.lock, size: 12, color: Brand.textTertiary)
+                Text("Pages are sent securely to Cascade's scan service and not stored.")
+                    .font(.caption2)
+                    .foregroundStyle(Brand.textTertiary)
+                Text("Details")
+                    .font(.caption2).bold()
+                    .foregroundStyle(Brand.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+    }
+
+    private var privacySheet: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("How scanning works")
+                        .font(CascadeFont.display(28))
+                        .foregroundStyle(Brand.textPrimary)
+                    Text("When you tap Convert, the page images are sent over an encrypted connection to Cascade's scan service, where an AI model reads the notation and returns the notes. Pages are processed in memory and not stored, and are never used to identify you. Sign in with Apple gives us only an anonymous ID.")
+                        .font(.body)
+                        .foregroundStyle(Brand.textSecondary)
+                    Text("Everything else in Cascade works offline. Your library, practice history, and exported videos stay on this device.")
+                        .font(.body)
+                        .foregroundStyle(Brand.textSecondary)
+                    if let url = ScanCloudConfig.privacyPolicyURL {
+                        Link("Read the privacy policy", destination: url)
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    }
+                }
+                .padding(20)
+            }
+            .stageBackground()
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showPrivacyInfo = false }.fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Samples
@@ -329,14 +398,9 @@ struct SheetScanView: View {
     private var samplesSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .foregroundColor(AppTheme.accent)
-                Text("Try a sample first")
-                    .font(.headline)
+                CascadeIconView(.sparkle, size: 14, color: Brand.teal)
+                Text("Or try a sample — instant and free").eyebrowStyle(Brand.teal)
             }
-            Text("Tap a page to load it, then Convert. Samples use a prepared transcription, so they're instant and free.")
-                .font(.caption)
-                .foregroundColor(.secondary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(SampleScan.all) { sample in
@@ -348,20 +412,20 @@ struct SheetScanView: View {
                                     Image(uiImage: thumb)
                                         .resizable()
                                         .scaledToFill()
-                                        .frame(width: 110, height: 140, alignment: .top)
+                                        .frame(width: 104, height: 132, alignment: .top)
                                         .clipped()
-                                        .cornerRadius(8)
-                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.hairline, lineWidth: 1))
                                 }
                                 Text(sample.title)
-                                    .font(.caption).bold()
-                                    .foregroundColor(.primary)
-                                    .lineLimit(2)
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(Brand.textPrimary)
+                                    .lineLimit(1)
                                 Text(sample.composer)
                                     .font(.caption2)
-                                    .foregroundColor(.secondary)
+                                    .foregroundStyle(Brand.textTertiary)
                             }
-                            .frame(width: 110, alignment: .leading)
+                            .frame(width: 104, alignment: .leading)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Sample: \(sample.title)")
@@ -369,14 +433,13 @@ struct SheetScanView: View {
                 }
             }
         }
-        .cascadeCard(padding: 12, radius: 14)
+        .padding(.top, 6)
     }
 
     private var sampleLoadedNote: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundColor(AppTheme.accent)
-            Text("Sample loaded — converting is instant and free. Your own scans need sign-in.")
+            CascadeIconView(.sparkle, size: 14, color: Brand.teal)
+            Text("Sample loaded — converting is instant and free.")
                 .font(.caption).bold()
             Spacer()
         }
@@ -400,11 +463,12 @@ struct SheetScanView: View {
 
     private var signInCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(freeScanHeadline, systemImage: "sparkles")
-                .font(.subheadline).bold()
-            Text("Sign in to scan. Your first scan is on us; packs of scans are available after that. We only receive an anonymous account ID, never your name or email.")
+            Text(freeScanHeadline)
+                .font(CascadeFont.display(22))
+                .foregroundStyle(Brand.textPrimary)
+            Text("Sign in to scan your own pages. Anonymous ID only — no name, no email.")
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(Brand.textSecondary)
             SignInWithAppleButton(.signIn) { request in
                 request.requestedScopes = []   // identity only — no name or email
             } onCompletion: { result in
@@ -442,9 +506,8 @@ struct SheetScanView: View {
         let remaining = account.remainingScans ?? 0
         let costNote = pages.count > 4 ? " · this scan uses \(creditsNeeded)" : ""
         return HStack(spacing: 8) {
-            Image(systemName: "checkmark.seal.fill")
-                .foregroundColor(.green)
-            Text("Signed in — \(remaining) scan\(remaining == 1 ? "" : "s") left\(costNote)")
+            CascadeIconView(.check, size: 14, color: Brand.mint)
+            Text("\(remaining) scan\(remaining == 1 ? "" : "s") left\(costNote)")
                 .font(.caption).bold()
             Spacer()
             Button("Get more") { showSettings = true }
@@ -486,48 +549,6 @@ struct SheetScanView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.1))
         .cornerRadius(12)
-    }
-
-    /// Plain-language disclosure of what leaves the device when you scan.
-    private var privacyNote: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Label("How scanning works", systemImage: "lock.shield")
-                .font(.caption).bold()
-                .foregroundColor(.secondary)
-            Text("When you tap Convert, the page images are sent over an encrypted connection to Cascade's scan service, where an AI model reads the notation. Pages are processed, not stored, and are never used to identify you. Everything else in Cascade works offline.")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-            if let url = ScanCloudConfig.privacyPolicyURL {
-                Link("Privacy Policy", destination: url)
-                    .font(.caption2).bold()
-            }
-        }
-        .padding(.top, 6)
-    }
-
-    private func sourceButton(icon: String, title: String, subtitle: String, disabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .frame(width: 36)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.headline)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .cascadeCard(padding: 14, radius: 14)
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled ? 0.5 : 1)
     }
 
     // MARK: - Phase 2: Recognizing
@@ -766,69 +787,41 @@ private struct ScanPreviewView: View {
     let onRetry: () -> Void
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
+                ScoreArtView(playback: score.playback, window: 16, cornerRadius: 24)
+                    .frame(height: 220)
+
                 VStack(alignment: .leading, spacing: 6) {
-                    Label("Transcription ready", systemImage: "checkmark.seal.fill")
-                        .eyebrowStyle(Brand.mint)
-                    Text("Check that it looks right")
-                        .font(CascadeFont.display(26))
+                    HStack(spacing: 6) {
+                        CascadeIconView(.check, size: 13, color: Brand.mint)
+                        Text(isSample ? "Sample transcription" : "Transcription ready").eyebrowStyle(Brand.mint)
+                    }
+                    TextField("Song title", text: $songTitle)
+                        .font(CascadeFont.display(28))
                         .foregroundStyle(Brand.textPrimary)
-                }
-
-                if isSample {
-                    Text("Sample: this transcription was prepared in advance, so no scan credit was used. Your own pages go through live recognition.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(AppTheme.accent.opacity(0.08))
-                        .cornerRadius(10)
-                }
-
-                // Stats
-                HStack(spacing: 10) {
-                    previewStat("\(score.playback.notes.count)", "Notes")
-                    previewStat(formatDuration(score.playback.totalDuration), "Duration")
-                    previewStat("\(Int(score.playback.tempo))", "BPM")
-                    previewStat("\(score.measureReport.measureCount)", "Measures")
+                        .textFieldStyle(.plain)
+                    Text("\(score.playback.notes.count) notes · \(formatDuration(score.playback.totalDuration)) · \(Int(score.playback.tempo)) BPM · \(score.measureReport.measureCount) measures")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(Brand.textSecondary)
                 }
 
                 if !score.measureReport.suspectMeasures.isEmpty {
                     rhythmWarning
                 }
 
-                // Note preview
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Note Preview")
-                        .font(.headline)
-                    notePreview
-                        .frame(height: 110)
-                        .background(Brand.ink2)
-                        .cornerRadius(12)
-                }
-
-                // Title
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Song title")
-                        .font(.subheadline).bold()
-                    TextField("Enter song title", text: $songTitle)
-                        .textFieldStyle(.roundedBorder)
-                }
-
-                // Actions
                 Button(action: onSave) {
-                    Label("Add to Library & Play", systemImage: "play.fill")
+                    HStack(spacing: 8) { CascadeIconView(.play, size: 16, color: Brand.ink); Text("Add to library & play") }
                 }
                 .buttonStyle(.cascadePrimary)
 
                 Button(action: onExport) {
-                    Label("Save & Export Video", systemImage: "film")
+                    HStack(spacing: 8) { CascadeIconView(.film, size: 16, color: Brand.textPrimary); Text("Save & export video") }
                 }
                 .buttonStyle(.cascadeSecondary)
 
                 Button(action: onRetry) {
-                    Label("Scan Again", systemImage: "arrow.counterclockwise")
+                    Text("Scan again")
                         .font(.subheadline)
                         .foregroundStyle(Brand.textSecondary)
                         .frame(maxWidth: .infinity)
@@ -836,13 +829,15 @@ private struct ScanPreviewView: View {
                 .buttonStyle(.plain)
                 .padding(.top, 4)
 
-                Text("Complex passages can lose detail in scanning — listen once before practicing, and rescan sharper photos if something sounds off.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if isSample {
+                    Text("Prepared in advance; no scan credit used. Your own pages go through live recognition.")
+                        .font(.caption2)
+                        .foregroundStyle(Brand.textTertiary)
+                }
 
                 Spacer(minLength: 20)
             }
-            .padding()
+            .padding(20)
         }
     }
 
@@ -851,8 +846,7 @@ private struct ScanPreviewView: View {
         let list = report.suspectMeasures.prefix(6).map(String.init).joined(separator: ", ")
         let more = report.suspectMeasures.count > 6 ? " and \(report.suspectMeasures.count - 6) more" : ""
         return HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "metronome")
-                .foregroundColor(.orange)
+            CascadeIconView(.info, size: 16, color: Brand.amber)
             VStack(alignment: .leading, spacing: 3) {
                 Text("\(report.suspectMeasures.count) of \(report.measureCount) measures may have rhythm errors")
                     .font(.caption).bold()
@@ -865,45 +859,6 @@ private struct ScanPreviewView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.1))
         .cornerRadius(10)
-    }
-
-    private var notePreview: some View {
-        Canvas { context, size in
-            let notes = score.playback.notes
-            guard !notes.isEmpty, score.playback.totalDuration > 0 else { return }
-            let total = score.playback.totalDuration
-
-            let minPitch = notes.map(\.pitch).min() ?? 21
-            let maxPitch = notes.map(\.pitch).max() ?? 108
-            let pitchRange = max(1, maxPitch - minPitch)
-
-            for note in notes {
-                let x = CGFloat(note.startTime / total) * size.width
-                let w = max(2, CGFloat(note.duration / total) * size.width)
-                let y = size.height - CGFloat(note.pitch - minPitch) / CGFloat(pitchRange) * (size.height - 8) - 4
-                let color: Color = note.voice >= 2 ? AppTheme.leftHandNote : AppTheme.rightHandNote
-                context.fill(
-                    Path(roundedRect: CGRect(x: x, y: y - 2, width: w, height: 4), cornerRadius: 1),
-                    with: .color(color)
-                )
-            }
-        }
-    }
-
-    private func previewStat(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.title3).bold()
-                .foregroundColor(AppTheme.accent)
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(Brand.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {

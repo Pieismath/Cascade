@@ -32,7 +32,7 @@ struct RootTabView: View {
                     .environment(themeManager)
             }
             .tabItem {
-                Label("Home", systemImage: "house.fill")
+                Label { Text("Home") } icon: { CascadeGlyph.home.image() }
             }
             .tag(0)
 
@@ -42,7 +42,7 @@ struct RootTabView: View {
                     .environment(libraryVM)
             }
             .tabItem {
-                Label("Add", systemImage: "plus.circle.fill")
+                Label { Text("Add") } icon: { CascadeGlyph.add.image() }
             }
             .tag(1)
 
@@ -64,7 +64,7 @@ struct RootTabView: View {
             .landscapeOnly()
             .toolbar(.hidden, for: .tabBar)
             .tabItem {
-                Label("Play", systemImage: "play.circle.fill")
+                Label { Text("Play") } icon: { CascadeGlyph.play.image() }
             }
             .tag(2)
 
@@ -78,7 +78,7 @@ struct RootTabView: View {
                     .environment(notificationManager)
             }
             .tabItem {
-                Label("Progress", systemImage: "chart.bar.fill")
+                Label { Text("Progress") } icon: { CascadeGlyph.progress.image() }
             }
             .tag(3)
         }
@@ -126,9 +126,7 @@ struct RootTabView: View {
 
     private var noSongSelectedView: some View {
         VStack(spacing: 16) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary)
+            CascadeIconView(.music, size: 56, color: Brand.textTertiary)
             Text("No Song Selected")
                 .font(.title3).bold()
             Text("Select a song from your library to start playing")
