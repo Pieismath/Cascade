@@ -32,6 +32,7 @@ struct SongLibraryView: View {
     @State private var showPhotoPicker = false
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var showImporter = false
+    @State private var importerTypes: [UTType] = [.musicXML, .compressedMusicXML, .xml, .pdf, .image]
     @State private var scanSession: ScanSession? = nil
     @State private var importError: String? = nil
 
@@ -112,7 +113,7 @@ struct SongLibraryView: View {
         // Import: MusicXML goes straight into the library; PDFs and images get scanned.
         .fileImporter(
             isPresented: $showImporter,
-            allowedContentTypes: [.musicXML, .compressedMusicXML, .xml, .pdf, .image],
+            allowedContentTypes: importerTypes,
             allowsMultipleSelection: true
         ) { result in
             handleImport(result)
@@ -246,7 +247,7 @@ struct SongLibraryView: View {
     private var addMusic: some View {
         HStack(spacing: 12) {
             Button(action: startScan) {
-                ActionTileLabel(title: "Scan", subtitle: "Sheet music on paper", tint: Brand.teal) {
+                ActionTileLabel(title: "Scan", subtitle: "Paper, photo or PDF", tint: Brand.teal) {
                     ScanTileArt()
                 }
             }
@@ -256,11 +257,12 @@ struct SongLibraryView: View {
                     Button { showCamera = true } label: { Label("Use camera", systemImage: "camera") }
                 }
                 Button { showPhotoPicker = true } label: { Label("Choose from Photos", systemImage: "photo.on.rectangle") }
+                Button { pickFiles(pages: true) } label: { Label("Choose a PDF", systemImage: "doc.richtext") }
             }
             .accessibilityLabel("Scan sheet music")
 
-            Button { showImporter = true } label: {
-                ActionTileLabel(title: "Import", subtitle: "PDF or MusicXML", tint: Brand.amber) {
+            Button { pickFiles(pages: false) } label: {
+                ActionTileLabel(title: "Import", subtitle: "MusicXML file · free", tint: Brand.amber) {
                     ImportTileArt()
                 }
             }
@@ -275,6 +277,16 @@ struct SongLibraryView: View {
         } else {
             showPhotoPicker = true
         }
+    }
+
+    /// Import offers score files first (free, straight into the library);
+    /// "Choose a PDF" under Scan offers pages instead. Either picker accepts
+    /// the other kind and routes it the right way.
+    private func pickFiles(pages: Bool) {
+        importerTypes = pages
+            ? [.pdf, .image, .musicXML, .compressedMusicXML, .xml]
+            : [.musicXML, .compressedMusicXML, .xml, .pdf, .image]
+        showImporter = true
     }
 
     private func handleImport(_ result: Result<[URL], Error>) {
@@ -611,11 +623,11 @@ private struct ViewfinderCorners: Shape {
     }
 }
 
-/// Two files fanned out: a PDF and a MusicXML score.
+/// Two score files fanned out — the formats Import takes for free.
 private struct ImportTileArt: View {
     var body: some View {
         ZStack {
-            sheet(label: "PDF", tagAlignment: .bottomLeading)
+            sheet(label: "MXL", tagAlignment: .bottomLeading)
                 .rotationEffect(.degrees(-10))
                 .offset(x: -22, y: 3)
             sheet(label: "XML", tagAlignment: .bottomTrailing)

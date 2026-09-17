@@ -18,9 +18,9 @@ Cascade turns any piano sheet music into an interactive falling-note lesson, the
 
 SCAN OR IMPORT ANYTHING
 • Photograph printed sheet music with the built-in document scanner
+• Or scan a PDF or photos of a score from Files
 • Try it instantly with bundled sample scans before using a credit
-• Import PDFs or photos from Files
-• Open MusicXML files (.musicxml, .xml, .mxl) from MuseScore, Finale, Sibelius, or any notation app
+• Open MusicXML files (.musicxml, .xml, .mxl) from MuseScore, Finale, Sibelius, or any notation app — free and unlimited, no scan needed
 • Start immediately with the bundled starter pieces: Für Elise, a Chopin Nocturne, Flight of the Bumblebee, Minuet in G, Ode to Joy and more
 
 LEARN AT YOUR OWN PACE
@@ -41,7 +41,7 @@ TRACK YOUR PROGRESS
 • Achievements and shareable progress cards
 • Optional daily practice reminders
 
-Scanning uses a secure cloud service to read the notation. Sign in with Apple and your first scan is free; scan packs are available as in-app purchases (10 or 25 scans, one scan covers up to 4 pages, credits never expire). We never see your name or email. Everything else works fully offline.
+Scanning printed music (camera, photos or PDF) uses a secure cloud service to read the notation. Sign in with Apple and your first scan is free; scan packs are available as in-app purchases (10 or 25 scans, one scan covers up to 4 pages, credits never expire). MusicXML import, the starter pieces, practice and video export are free and unlimited. We never see your name or email. Everything except scanning works fully offline.
 
 ## Keywords (100 chars)
 
