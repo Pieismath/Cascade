@@ -33,12 +33,14 @@ export function transcriptionRequest(pageCount, context = "") {
 Format requirements — the consuming app reads a specific MusicXML subset:
 - \`score-partwise\` with exactly one part (id "P1") for piano.
 - Two staves: right hand on staff 1 with voice 1, left hand on staff 2 with voice 5. Every note carries <voice> and <staff>. Use <backup> to return to the start of the measure for the left hand.
-- Choose one <divisions> value for the whole piece that expresses every rhythm you see, including dots and tuplets (24 works for most music; use 480 if there are complex tuplets). Every <duration> must be a whole number.
+- Use <divisions>24</divisions> (a quarter note = 24) unless the music needs finer resolution; then use 480. Every <duration> must be a whole number: eighth = 12, sixteenth = 6, dotted eighth = 18, eighth triplet = 8.
+- Copy the printed time signature exactly, and make every measure add up to it: in 3/8 each measure holds three eighths (duration 36 per voice at divisions 24), in 4/4 it holds four quarters (96). Check each measure against this before moving on.
 - Emit <sound tempo="N"/> in the first measure (from the printed tempo/metronome marking, or a musically sensible value for the style if none is printed). Add further <sound tempo> elements only where the score changes tempo.
 - Spell sounding pitches with <step>, <octave>, and <alter> (apply the key signature and accidentals; use <alter>1</alter> for sharps, -1 for flats).
 - Chords: subsequent chord tones carry <chord/>. Ties between same pitches use <tie type="start"/> and <tie type="stop"/>. Rests use <rest/> with a duration. Grace notes use <grace/> and no duration.
 - Pedal markings become <direction><direction-type><pedal type="start"/></direction-type></direction> and type "stop" where released.
 - Write out repeats literally: unfold repeat barlines, volta endings, D.C./D.S. instructions into the full played-through sequence.
+- Transcribe every notehead you can see, in both staves, including inner voices and repeated notes. Do not simplify, summarise, or skip anything, and do not invent notes that aren't printed.
 - If a detail is smudged or ambiguous, choose the most musically plausible reading and continue — never insert comments or placeholders.
 
 Reply with only the MusicXML document.`;
