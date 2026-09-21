@@ -13,6 +13,9 @@ export class ProviderError extends Error {
 }
 
 const MAX_OUTPUT_TOKENS = 24000;
+// Gemini 3 counts its thinking against the same budget as the answer and
+// allows 64k, so give it room; a truncated reply wastes the whole request.
+const GEMINI_MAX_OUTPUT_TOKENS = 48000;
 
 // Google retires model ids fairly often; these are the defaults as of
 // September 2026 and both are reachable on the free tier.
@@ -35,7 +38,7 @@ Format requirements — the consuming app reads a specific MusicXML subset:
 - Two staves: right hand on staff 1 with voice 1, left hand on staff 2 with voice 5. Every note carries <voice> and <staff>. Use <backup> to return to the start of the measure for the left hand.
 - Use <divisions>24</divisions> (a quarter note = 24) unless the music needs finer resolution; then use 480. Every <duration> must be a whole number: eighth = 12, sixteenth = 6, dotted eighth = 18, eighth triplet = 8.
 - Copy the printed time signature exactly, and make every measure add up to it: in 3/8 each measure holds three eighths (duration 36 per voice at divisions 24), in 4/4 it holds four quarters (96). Check each measure against this before moving on.
-- Emit <sound tempo="N"/> in the first measure (from the printed tempo/metronome marking, or a musically sensible value for the style if none is printed). Add further <sound tempo> elements only where the score changes tempo.
+- Emit <sound tempo="N"/> in the first measure (from the printed tempo/metronome marking, or a musically sensible value for the style if none is printed). N is always quarter notes per minute, whatever the time signature: in 3/8 or 6/8, eighth = 120 is tempo 60. Add further <sound tempo> elements only where the score changes tempo.
 - Spell sounding pitches with <step>, <octave>, and <alter> (apply the key signature and accidentals; use <alter>1</alter> for sharps, -1 for flats).
 - Chords: subsequent chord tones carry <chord/>. Ties between same pitches use <tie type="start"/> and <tie type="stop"/>. Rests use <rest/> with a duration. Grace notes use <grace/> and no duration.
 - Pedal markings become <direction><direction-type><pedal type="start"/></direction-type></direction> and type "stop" where released.
@@ -226,7 +229,7 @@ export async function callGemini(env, pages, model = null, fetcher = fetch, cont
  * don't accept the field at all.
  */
 function geminiGenerationConfig(env, model) {
-  const config = { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 };
+  const config = { maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS, temperature: 0.2 };
   if (/^gemini-[3-9]/.test(model)) {
     config.thinkingConfig = { thinkingLevel: env.GEMINI_THINKING_LEVEL || "low" };
   }

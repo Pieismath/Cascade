@@ -3,8 +3,10 @@
 
 const STEPS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
-export function parseScore(xml) {
-  const divisions = Number(xml.match(/<divisions>(\d+)<\/divisions>/)?.[1] ?? 1) || 1;
+export function parseScore(xml, inheritedDivisions = 1) {
+  // A continuation part that leaves out <divisions> keeps the previous part's,
+  // the same as the app's stitched document would.
+  const divisions = Number(xml.match(/<divisions>(\d+)<\/divisions>/)?.[1] ?? inheritedDivisions) || 1;
   const measures = [];
   const measureRe = /<measure\b[^>]*>([\s\S]*?)<\/measure>/g;
   let match;
@@ -67,7 +69,17 @@ function overlap(want, got) {
  * tempo).
  */
 export function scoreScan(scanXml, referenceXml) {
-  const scan = parseScore(scanXml);
+  // A scan can arrive in several parts (one per request); each keeps its own
+  // divisions, so parse them separately and line their measures up end to end.
+  const parts = Array.isArray(scanXml) ? scanXml : [scanXml];
+  const scan = { measures: [] };
+  let divisions = 1;
+  for (const part of parts) {
+    const parsed = parseScore(part, divisions);
+    divisions = parsed.divisions;
+    scan.measures.push(...parsed.measures);
+  }
+  const firstPart = parts[0] ?? "";
   const reference = parseScore(referenceXml);
   const pairs = Math.min(scan.measures.length, reference.measures.length);
 
@@ -119,7 +131,7 @@ export function scoreScan(scanXml, referenceXml) {
     rhythmExact: pairs ? rhythmExact / pairs : 0,
     rhythmSteady: pairs ? rhythmSteady / pairs : 0,
     beatRatio: typical,
-    tempo: Number(scanXml.match(/<sound tempo="([\d.]+)"/)?.[1] ?? 0),
+    tempo: Number(firstPart.match(/<sound tempo="([\d.]+)"/)?.[1] ?? 0),
     referenceTempo: Number(referenceXml.match(/<sound tempo="([\d.]+)"/)?.[1] ?? 0),
     problems,
   };

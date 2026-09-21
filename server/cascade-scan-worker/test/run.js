@@ -283,7 +283,7 @@ await test("gemini 3 requests keep thinking short; older models get no such fiel
     return ok();
   });
   assert.equal(body.generationConfig.thinkingConfig.thinkingLevel, "low", "thinking tokens share the output budget");
-  assert.equal(body.generationConfig.maxOutputTokens, 24000);
+  assert.equal(body.generationConfig.maxOutputTokens, 48000);
 
   await recognize({ GEMINI_API_KEY: "g", GEMINI_MODEL: "gemini-2.5-flash" }, ["cGFnZQ=="], "standard", async (_url, init) => {
     body = JSON.parse(init.body);
@@ -320,7 +320,7 @@ await test("a rejected thinking field is dropped and the scan still goes through
   assert.equal(result.musicXML, SCORE);
   assert.equal(bodies.length, 2, "retried once without the thinking hint");
   assert.equal(bodies[1].generationConfig.thinkingConfig, undefined);
-  assert.equal(bodies[1].generationConfig.maxOutputTokens, 24000);
+  assert.equal(bodies[1].generationConfig.maxOutputTokens, 48000);
 });
 
 await test("recognize does not fall back on non-retryable errors", async () => {
