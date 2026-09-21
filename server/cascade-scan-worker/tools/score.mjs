@@ -68,7 +68,7 @@ function overlap(want, got) {
  * off by the same factor still plays correctly, just at another notated
  * tempo).
  */
-export function scoreScan(scanXml, referenceXml) {
+export function scoreScan(scanXml, referenceXml, { expectedMeasures } = {}) {
   // A scan can arrive in several parts (one per request); each keeps its own
   // divisions, so parse them separately and line their measures up end to end.
   const parts = Array.isArray(scanXml) ? scanXml : [scanXml];
@@ -81,7 +81,11 @@ export function scoreScan(scanXml, referenceXml) {
   }
   const firstPart = parts[0] ?? "";
   const reference = parseScore(referenceXml);
-  const pairs = Math.min(scan.measures.length, reference.measures.length);
+  // How many bars the pages really hold. Without it we can only compare what
+  // came back, which lets a model that skips bars look better than it is.
+  const pairs = expectedMeasures
+    ? Math.min(expectedMeasures, reference.measures.length)
+    : Math.min(scan.measures.length, reference.measures.length);
 
   let wantedNotes = 0;
   let matchedNotes = 0;
@@ -92,7 +96,7 @@ export function scoreScan(scanXml, referenceXml) {
 
   for (let i = 0; i < pairs; i++) {
     const want = pitches(reference.measures[i]);
-    const got = pitches(scan.measures[i]);
+    const got = pitches(scan.measures[i] ?? []);
     const hits = overlap(want, got);
     wantedNotes += want.length;
     matchedNotes += hits;
@@ -101,11 +105,15 @@ export function scoreScan(scanXml, referenceXml) {
     if (exact) exactMeasures += 1;
 
     const wantBeats = measureBeats(reference.measures[i]);
-    const gotBeats = measureBeats(scan.measures[i]);
+    const gotBeats = measureBeats(scan.measures[i] ?? []);
     const sameRhythm = Math.abs(wantBeats - gotBeats) < 0.01;
     if (sameRhythm) rhythmExact += 1;
     if (wantBeats > 0 && gotBeats > 0) ratios.push(gotBeats / wantBeats);
 
+    if (i >= scan.measures.length) {
+      if (problems.length < 8) problems.push(`  measure ${i + 1}: missing`);
+      continue;
+    }
     if ((!exact || !sameRhythm) && problems.length < 8) {
       problems.push(
         `  measure ${i + 1}: ${hits}/${want.length} pitches` +
@@ -121,6 +129,7 @@ export function scoreScan(scanXml, referenceXml) {
 
   return {
     scanMeasures: scan.measures.length,
+    missingMeasures: Math.max(0, pairs - scan.measures.length),
     referenceMeasures: reference.measures.length,
     comparedMeasures: pairs,
     wantedNotes,

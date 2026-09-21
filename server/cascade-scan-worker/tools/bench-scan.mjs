@@ -31,6 +31,9 @@ const exists = async (path) => access(path).then(() => true).catch(() => false);
 const defaultCrops = [1, 2, 3, 4].map((n) => join(homedir(), "cascade-crops", `Sample-FurElise-1-system-0${n}.jpg`));
 const pagePaths = given.length ? given : defaultCrops;
 const referencePath = flag("ref", resolve(here, "../../../Resources/FurEliseOpening.musicxml"));
+// Bars actually on the pages sent: the default crops are Für Elise systems 1–4,
+// three bars each. Pass --bars for your own pages.
+const expectedMeasures = Number(flag("bars", given.length ? 0 : 12)) || undefined;
 
 for (const path of [...pagePaths, referencePath]) {
   if (!(await exists(path))) {
@@ -83,13 +86,15 @@ const configurations = [];
 if (process.env.GEMINI_API_KEY) {
   configurations.push(
     { label: "gemini 3.6 · 4 per request", model: "gemini-3.6-flash", batch: 4 },
-    { label: "gemini 3.6 · 2 per request", model: "gemini-3.6-flash", batch: 2 },
-    { label: "gemini 3.6 · 1 per request", model: "gemini-3.6-flash", batch: 1 },
-    { label: "gemini 3.8 · 2 per request", model: "gemini-3.8-flash", batch: 2 }
+    { label: "gemini 3.8 · 4 per request", model: "gemini-3.8-flash", batch: 4 }
   );
 }
 if (process.env.ANTHROPIC_API_KEY) {
-  configurations.push({ label: "claude sonnet · 2 per req", model: process.env.ANTHROPIC_MODEL || "claude-sonnet-5", batch: 2, anthropic: true });
+  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+  configurations.push(
+    { label: "claude sonnet · 4 per request", model, batch: 4, anthropic: true },
+    { label: "claude sonnet · 2 per request", model, batch: 2, anthropic: true }
+  );
 }
 if (configurations.length === 0) {
   console.error("Set GEMINI_API_KEY and/or ANTHROPIC_API_KEY first.");
@@ -119,7 +124,7 @@ for (const configuration of configurations) {
       attributes = attributesOf(result.musicXML, attributes);
     }
     const seconds = (Date.now() - started) / 1000;
-    const score = scoreScan(parts, reference);
+    const score = scoreScan(parts, reference, { expectedMeasures });
     const out = join(homedir(), `bench-${configuration.label.replace(/[^a-z0-9]+/gi, "-")}.musicxml`);
     await writeFile(out, parts.join("\n\n<!-- next request -->\n\n"));
     rows.push({ label: configuration.label, seconds, score });
@@ -132,17 +137,17 @@ for (const configuration of configurations) {
 
 const pad = (text, width) => String(text).padEnd(width);
 console.log(`
-${pad("setup", 28)} ${pad("pitches", 9)} ${pad("perfect bars", 13)} ${pad("rhythm", 9)} ${pad("tempo", 7)} time`);
-console.log("-".repeat(80));
+${pad("setup", 30)} ${pad("bars", 7)} ${pad("pitches", 9)} ${pad("perfect bars", 13)} ${pad("rhythm", 9)} ${pad("tempo", 7)} time`);
+console.log("-".repeat(88));
 for (const row of rows) {
   if (row.failed) {
-    console.log(`${pad(row.label, 28)} ${row.failed}`);
+    console.log(`${pad(row.label, 30)} ${row.failed}`);
     continue;
   }
   const s = row.score;
   const rhythm = s.rhythmExact >= s.rhythmSteady - 0.001 ? pct(s.rhythmExact) : `${pct(s.rhythmSteady)}*`;
   console.log(
-    `${pad(row.label, 28)} ${pad(pct(s.pitchAccuracy), 9)} ${pad(pct(s.perfectBars), 13)} ${pad(rhythm, 9)} ${pad(s.tempo || "—", 7)} ${row.seconds.toFixed(0)}s`
+    `${pad(row.label, 30)} ${pad(`${s.comparedMeasures - s.missingMeasures}/${s.comparedMeasures}`, 7)} ${pad(pct(s.pitchAccuracy), 9)} ${pad(pct(s.perfectBars), 13)} ${pad(rhythm, 9)} ${pad(s.tempo || "—", 7)} ${row.seconds.toFixed(0)}s`
   );
 }
 console.log(`
