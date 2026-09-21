@@ -13,6 +13,9 @@ export class ProviderError extends Error {
 }
 
 const MAX_OUTPUT_TOKENS = 24000;
+// Claude thinks by default on Sonnet 5 / Opus 5 and thinking shares
+// max_tokens with the answer; streaming allows a large ceiling without timeouts.
+const ANTHROPIC_MAX_OUTPUT_TOKENS = 64000;
 // Gemini 3 counts its thinking against the same budget as the answer and
 // allows 64k, so give it room; a truncated reply wastes the whole request.
 const GEMINI_MAX_OUTPUT_TOKENS = 48000;
@@ -100,20 +103,31 @@ export async function callAnthropic(env, pages, model, fetcher = fetch, context 
   }));
   content.push({ type: "text", text: transcriptionRequest(pages.length, context) });
 
+  const headers = {
+    "content-type": "application/json",
+    "x-api-key": env.ANTHROPIC_API_KEY,
+    "anthropic-version": "2023-06-01",
+  };
+  const body = {
+    model,
+    max_tokens: ANTHROPIC_MAX_OUTPUT_TOKENS,
+    stream: true,
+    thinking: { type: "adaptive" },
+    output_config: { effort: env.ANTHROPIC_EFFORT || "high" },
+    system: SYSTEM_PROMPT,
+    messages: [{ role: "user", content }],
+  };
+  // Opus 5's safety classifiers can decline a request; let the API re-run it
+  // on Anthropic's recommended fallback instead of failing the scan.
+  if (/^claude-opus-5/.test(model)) {
+    headers["anthropic-beta"] = "server-side-fallback-2026-07-01";
+    body.fallbacks = "default";
+  }
+
   const res = await fetcher("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      stream: true,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content }],
-    }),
+    headers,
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -138,6 +152,10 @@ export async function callAnthropic(env, pages, model, fetcher = fetch, context 
 
   if (stopReason === "max_tokens") {
     throw new ProviderError("output truncated", { truncated: true });
+  }
+  if (stopReason === "refusal") {
+    // Any partial output is discarded; the other provider can try.
+    throw new ProviderError("anthropic declined the request", { retryable: true });
   }
   return extractMusicXML(text);
 }

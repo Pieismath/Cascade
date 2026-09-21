@@ -201,6 +201,36 @@ await test("recognize uses anthropic when it succeeds", async () => {
   assert.equal(result.musicXML, SCORE);
 });
 
+await test("anthropic requests leave room for thinking; opus 5 opts into fallbacks", async () => {
+  let seen;
+  const fetcher = async (_url, init) => {
+    seen = { headers: init.headers, body: JSON.parse(init.body) };
+    return sseResponse(SCORE);
+  };
+
+  await recognize({ ANTHROPIC_API_KEY: "k", ANTHROPIC_MODEL: "claude-sonnet-5" }, ["cGFnZQ=="], "standard", fetcher);
+  assert.equal(seen.body.max_tokens, 64000, "thinking shares max_tokens with the answer");
+  assert.deepEqual(seen.body.thinking, { type: "adaptive" });
+  assert.equal(seen.body.output_config.effort, "high");
+  assert.equal(seen.body.fallbacks, undefined);
+  assert.equal(seen.headers["anthropic-beta"], undefined);
+
+  await recognize({ ANTHROPIC_API_KEY: "k", ANTHROPIC_MODEL: "claude-opus-5" }, ["cGFnZQ=="], "standard", fetcher);
+  assert.equal(seen.body.fallbacks, "default");
+  assert.equal(seen.headers["anthropic-beta"], "server-side-fallback-2026-07-01");
+
+  await recognize({ ANTHROPIC_API_KEY: "k", ANTHROPIC_MODEL: "claude-sonnet-5", ANTHROPIC_EFFORT: "medium" }, ["cGFnZQ=="], "standard", fetcher);
+  assert.equal(seen.body.output_config.effort, "medium");
+});
+
+await test("a refusal is not returned as a transcription", async () => {
+  const refusal = async () => sseResponse("", "refusal");
+  await assert.rejects(
+    recognize({ ANTHROPIC_API_KEY: "k" }, ["cGFnZQ=="], "standard", refusal),
+    (err) => err instanceof ProviderError && err.retryable
+  );
+});
+
 await test("recognize escalates model for high quality", async () => {
   let requestedModel;
   const fetcher = async (url, init) => {

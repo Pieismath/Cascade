@@ -90,10 +90,9 @@ if (process.env.GEMINI_API_KEY) {
   );
 }
 if (process.env.ANTHROPIC_API_KEY) {
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
   configurations.push(
-    { label: "claude sonnet · 4 per request", model, batch: 4, anthropic: true },
-    { label: "claude sonnet · 2 per request", model, batch: 2, anthropic: true }
+    { label: "claude sonnet 5 · 4 per request", model: "claude-sonnet-5", batch: 4, anthropic: true },
+    { label: "claude opus 5 · 4 per request", model: "claude-opus-5", batch: 4, anthropic: true }
   );
 }
 if (configurations.length === 0) {
